@@ -28,7 +28,7 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
-          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/GitHubActionsLambdaDeployRole
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/GithubActionsLambdaDeployRole
           role-session-name: GitHubLambdaDeploySession
           aws-region: ${{ env.AWS_REGION }}
 
