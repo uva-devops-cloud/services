@@ -42,7 +42,7 @@ jobs:
 
       - name: Package and deploy Lambda functions
         run: |
-          for function_dir in services/lambda-functions/*/; do
+          for function_dir in /lambda-functions/*/; do
             # Extract function name from directory path
             function_name=$(basename "$function_dir")
             echo "Packaging $function_name..."
@@ -52,8 +52,8 @@ jobs:
             if [ -f "package.json" ]; then
               npm ci --production
             fi
-            zip -r "../../../deployment/${function_name}.zip" .
-            cd ../../../
+            zip -r "../../deployment/${function_name}.zip" .
+            cd ../../
 
             echo "Uploading $function_name to S3..."
             aws s3 cp "deployment/${function_name}.zip" \
