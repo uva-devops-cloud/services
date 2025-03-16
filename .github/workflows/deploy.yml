@@ -21,6 +21,7 @@ jobs:
       lambda_functions: >-
         [
           {"name": "program-details", "directory": "services/lambda/ProgramDetails"},
+          {"name": "hello_world", "directory": "services/lambda/HelloWorld"}
         ]
 
   deploy-prod:
@@ -33,6 +34,6 @@ jobs:
       aws_account_id: "054037129431"
       lambda_functions: >-
         [
-          {"name": "db-migration-runner", "directory": "lambda"},
-          {"name": "course-details", "directory": "services/CourseDetails"}
+          {"name": "program-details", "directory": "services/lambda/ProgramDetails"},
+          {"name": "hello_world", "directory": "services/lambda/HelloWorld"}
         ]
