@@ -1,0 +1,38 @@
+name: Main Workflow
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - "feature/*"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-dev:
+    name: Deploy to Dev
+    uses: ./.github/workflows/services-deploy.yml
+    with:
+      environment: dev
+      aws_account_id: "474668415523"
+      lambda_functions: >-
+        [
+          {"name": "program-details", "directory": "services/lambda/ProgramDetails"},
+        ]
+
+  deploy-prod:
+    name: Deploy to Prod
+    needs: deploy-dev
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    uses: ./.github/workflows/services-deploy.yml
+    with:
+      environment: prod
+      aws_account_id: "054037129431"
+      lambda_functions: >-
+        [
+          {"name": "db-migration-runner", "directory": "lambda"},
+          {"name": "course-details", "directory": "services/CourseDetails"}
+        ]
