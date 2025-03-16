@@ -1,0 +1,10 @@
+{
+    "name": "hello-world",
+    "version": "1.0.0",
+    "main": "index.js",
+    "scripts": {
+        "zip": "zip -r function.zip .",
+        "deploy": "aws lambda update-function-code --function-name helloWorld --zip-file fileb://function.zip"
+    },
+    "license": "ISC"
+}
