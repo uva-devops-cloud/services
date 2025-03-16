@@ -53,7 +53,7 @@ jobs:
 
       - name: Upload Lambda package to S3 - ${{ matrix.function.name }}
         run: |
-          aws s3 cp ${{ matrix.function.name }}.zip s3://lambda-deployments-${{ inputs.aws_account_id }}/functions/${{ matrix.function.name }}.zip
+          aws s3 cp $(dirname ${{ matrix.function.directory }})/${{ matrix.function.name }}.zip s3://lambda-deployments-${{ inputs.aws_account_id }}/functions/${{ matrix.function.name }}.zip
 
       - name: Update Lambda code from S3 - ${{ matrix.function.name }}
         run: |
