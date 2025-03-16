@@ -28,8 +28,8 @@ jobs:
           {"name": "student-query-intake", "directory": "lambda/query/QueryIntake"},
           {"name": "student-query-llm-analyzer", "directory": "lambda/query/LLMQueryAnalyzer"},
           {"name": "student-query-worker-dispatcher", "directory": "lambda/query/WorkerDispatcher"},
-          {"name": "student-querry-response-aggregator", "directory": "lambda/query/ResponseAggregator"},
-          {"name": "student-querry-orchestrator", "directory": "lambda/query/Orchestrator"}
+          {"name": "student-query-response-aggregator", "directory": "lambda/query/ResponseAggregator"},
+          {"name": "student-query-orchestrator", "directory": "lambda/query/Orchestrator"}
         ]
 
   deploy-prod:
