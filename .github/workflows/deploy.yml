@@ -20,8 +20,8 @@ jobs:
       aws_account_id: "474668415523"
       lambda_functions: >-
         [
-          {"name": "program-details", "directory": "services/lambda/ProgramDetails"},
-          {"name": "hello_world", "directory": "services/lambda/HelloWorld"}
+          {"name": "program-details", "directory": "lambda/ProgramDetails"},
+          {"name": "hello_world", "directory": "lambda/HelloWorld"}
         ]
 
   deploy-prod:
@@ -34,6 +34,6 @@ jobs:
       aws_account_id: "054037129431"
       lambda_functions: >-
         [
-          {"name": "program-details", "directory": "services/lambda/ProgramDetails"},
-          {"name": "hello_world", "directory": "services/lambda/HelloWorld"}
+          {"name": "program-details", "directory": "lambda/ProgramDetails"},
+          {"name": "hello_world", "directory": "lambda/HelloWorld"}
         ]

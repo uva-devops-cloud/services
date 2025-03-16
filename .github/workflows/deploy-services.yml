@@ -1,0 +1,91 @@
+name: Deploy Lambda Services (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      aws_account_id:
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-lambda-functions:
+    name: Deploy Lambda functions to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: "eu-west-2"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/GithubActionsLambdaDeployRole
+          role-session-name: GitHubLambdaDeploySession
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+
+      - name: Create deployment directory
+        run: mkdir -p deployment
+
+      - name: Debug directory structure
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "Directory contents:"
+          ls -la
+          echo "Recursive directory structure:"
+          find . -type d -maxdepth 5
+
+      - name: Package and deploy Lambda functions
+        run: |
+          # Loop through each Lambda function directory
+          for function_dir in $(find ./lambda-functions -mindepth 1 -maxdepth 1 -type d); do
+            # Extract function name from directory path
+            function_name=$(basename "$function_dir")
+            echo "Packaging $function_name from $function_dir..."
+
+            # Create deployment package
+            cd "$function_dir"
+            if [ -f "package.json" ]; then
+              echo "Installing dependencies for $function_name..."
+              npm ci --production
+            else
+              echo "No package.json found for $function_name, skipping npm install."
+            fi
+
+            echo "Creating zip package for $function_name..."
+            zip -r "$(pwd)/../../deployment/${function_name}.zip" .
+            cd - > /dev/null  # Return to previous directory silently
+
+            echo "Uploading $function_name to S3..."
+            aws s3 cp "deployment/${function_name}.zip" \
+              "s3://studentportal-lambda-code-${{ inputs.aws_account_id }}/functions/${function_name}.zip"
+
+            echo "Updating Lambda function..."
+            aws lambda update-function-code \
+              --function-name "$function_name" \
+              --s3-bucket "studentportal-lambda-code-${{ inputs.aws_account_id }}" \
+              --s3-key "functions/${function_name}.zip" \
+              --publish
+
+            echo "$function_name deployment complete."
+          done
+
+      - name: Verify deployment
+        run: |
+          echo "Deployment to ${{ inputs.environment }} environment completed."
+          echo "Account: ${{ inputs.aws_account_id }}"
+          timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+          echo "Timestamp: $timestamp"
