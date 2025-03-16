@@ -76,7 +76,7 @@ jobs:
             echo "Updating Lambda function..."
             aws lambda update-function-code \
               --function-name "$function_name" \
-              --s3-bucket "lambda-code-${{ inputs.aws_account_id }}" \
+              --s3-bucket "studentportal-lambda-code-${{ inputs.aws_account_id }}" \
               --s3-key "functions/${function_name}.zip" \
               --publish
 
