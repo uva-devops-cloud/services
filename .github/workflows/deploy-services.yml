@@ -71,7 +71,7 @@ jobs:
 
             echo "Uploading $function_name to S3..."
             aws s3 cp "deployment/${function_name}.zip" \
-              "s3://lambda-code-${{ inputs.aws_account_id }}/functions/${function_name}.zip"
+              "s3://studentportal-lambda-code-${{ inputs.aws_account_id }}/functions/${function_name}.zip"
 
             echo "Updating Lambda function..."
             aws lambda update-function-code \
