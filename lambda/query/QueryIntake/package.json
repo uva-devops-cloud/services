@@ -1,0 +1,15 @@
+{
+  "name": "query-intake",
+  "version": "1.0.0",
+  "description": "Lambda function to handle incoming student queries",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1409.0",
+    "uuid": "^9.0.0"
+  },
+  "author": "",
+  "license": "ISC"
+}

@@ -20,8 +20,16 @@ jobs:
       aws_account_id: "474668415523"
       lambda_functions: >-
         [
-          {"name": "get-program-details", "directory": "lambda/GetProgramDetails"},
-          {"name": "hello_world", "directory": "lambda/HelloWorld"}
+          {"name": "get-student-data": "directory": "lambda/worker/GetStudentDetails"}
+          {"name": "get-student-courses", "directory": "lambda/worker/GetStudentCourses"},
+          {"name": "get-program-details", "directory": "lambda/worker/GetProgramDetails"},
+          {"name": "hello_world", "directory": "lambda/HelloWorld"},
+          {"name": "student-query-answer-generator", "directory": "lambda/query/AnswerGenerator"},
+          {"name": "student-query-intake", "directory": "lambda/query/QueryIntake"},
+          {"name": "student-query-llm-analyzer", "directory": "lambda/query/LLMQueryAnalyzer"},
+          {"name": "student-query-worker-dispatcher", "directory": "lambda/query/WorkerDispatcher"},
+          {"name": "student-querry-response-aggregator", "directory": "lambda/query/ResponseAggregator"},
+          {"name": "student-querry-orchestrator", "directory": "lambda/query/Orchestrator"},
         ]
 
   deploy-prod:
