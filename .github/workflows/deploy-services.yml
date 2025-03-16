@@ -51,7 +51,7 @@ jobs:
       - name: Package and deploy Lambda functions
         run: |
           # Loop through each Lambda function directory
-          for function_dir in $(find ./services/lambda-functions -mindepth 1 -maxdepth 1 -type d); do
+          for function_dir in $(find ./lambda-functions -mindepth 1 -maxdepth 1 -type d); do
             # Extract function name from directory path
             function_name=$(basename "$function_dir")
             echo "Packaging $function_name from $function_dir..."
