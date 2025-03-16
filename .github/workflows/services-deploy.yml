@@ -58,6 +58,6 @@ jobs:
       - name: Update Lambda code from S3 - ${{ matrix.function.name }}
         run: |
           aws lambda update-function-code \
-            --function-name ${{ matrix.function.name }}-${{ inputs.environment }} \
+            --function-name ${{ matrix.function.name }} \
             --s3-bucket lambda-deployments-${{ inputs.aws_account_id }} \
             --s3-key functions/${{ matrix.function.name }}.zip
