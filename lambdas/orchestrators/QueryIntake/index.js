@@ -37,14 +37,29 @@ const LLM_QUERY_ANALYZER_FUNCTION = process.env.LLM_QUERY_ANALYZER_FUNCTION || '
 exports.handler = async (event, context) => {
     try {
         console.log('Received request:', JSON.stringify(event));
+        console.log('Authorization header:', event.headers ? event.headers.Authorization : 'No Authorization header');
+        
+        if (event.httpMethod === 'OPTIONS') {
+            return {
+                statusCode: 200,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
+                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Origin'
+                },
+                body: JSON.stringify({})
+            };
+        }
         
         // Extract user message from the event
         const userMessage = extractUserMessage(event);
         
         // Validate and extract user identity from JWT
         const userIdentity = await validateAndExtractUserIdentity(event);
+        console.log('User identity validation result:', JSON.stringify(userIdentity));
         
         if (!userIdentity.isValid) {
+            console.log('Authentication failed:', userIdentity.error || 'No specific error provided');
             return formatErrorResponse(401, 'Unauthorized: Invalid or missing authentication');
         }
         
@@ -151,64 +166,61 @@ function extractUserMessage(event) {
 }
 
 /**
- * Validate and extract user identity from JWT token
+ * Validate and extract user identity from JWT token in Authorization header
  * 
  * @param {Object} event - The Lambda event
  * @returns {Object} - Object containing userId, email, name, and isValid flag
  */
 async function validateAndExtractUserIdentity(event) {
     try {
-        // Default response for invalid authentication
-        const defaultResponse = {
-            userId: 'anonymous',
-            email: '',
-            name: '',
-            isValid: false
-        };
+        console.log('Validating user identity from event:', JSON.stringify({
+            headers: event.headers,
+            hasAuthorization: event.headers && !!event.headers.Authorization
+        }));
         
-        // Extract the Authorization header
-        let token = null;
-        
-        if (event.headers && event.headers.Authorization) {
-            token = event.headers.Authorization.replace('Bearer ', '');
-        } else if (event.headers && event.headers.authorization) {
-            token = event.headers.authorization.replace('Bearer ', '');
+        // Check if Authorization header exists
+        if (!event.headers || !event.headers.Authorization) {
+            console.log('No Authorization header found');
+            return { isValid: false, error: 'No Authorization header provided' };
         }
         
-        // For direct Lambda invocation, the token might be in the payload
-        if (!token && event.token) {
-            token = event.token;
-        }
+        const authHeader = event.headers.Authorization;
+        console.log('Auth header format:', authHeader.substring(0, 10) + '...');
+        
+        // Extract the token part (remove "Bearer " prefix if present)
+        const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader;
         
         if (!token) {
-            console.warn('No authentication token provided');
-            return defaultResponse;
+            console.log('Token is empty after extraction');
+            return { isValid: false, error: 'Empty token' };
         }
         
-        // Decode the JWT token (without verification for now)
-        // In production, you should verify the token signature
-        const decoded = jwt.decode(token);
-        
-        if (!decoded || !decoded.sub) {
-            console.warn('Invalid token format');
-            return defaultResponse;
+        try {
+            // Decode the JWT to extract user information (without verification for debugging)
+            const decodedToken = jwt.decode(token, { complete: true });
+            console.log('Decoded token payload:', JSON.stringify(decodedToken?.payload || 'Invalid token format'));
+            
+            // For now, just return the decoded information for debugging
+            if (!decodedToken || !decodedToken.payload) {
+                return { isValid: false, error: 'Invalid token format' };
+            }
+            
+            // Add your JWT verification logic here when ready
+            // ...
+
+            return {
+                isValid: true,
+                userId: decodedToken.payload.sub,
+                email: decodedToken.payload.email || '',
+                name: decodedToken.payload.name || ''
+            };
+        } catch (tokenError) {
+            console.error('Token processing error:', tokenError);
+            return { isValid: false, error: `Token processing error: ${tokenError.message}` };
         }
-        
-        return {
-            userId: decoded.sub,
-            email: decoded.email || '',
-            name: decoded.name || `${decoded.given_name || ''} ${decoded.family_name || ''}`.trim(),
-            isValid: true
-        };
-        
     } catch (error) {
-        console.error('Error validating user identity:', error);
-        return {
-            userId: 'anonymous',
-            email: '',
-            name: '',
-            isValid: false
-        };
+        console.error('Error in validateAndExtractUserIdentity:', error);
+        return { isValid: false, error: error.message };
     }
 }
 
