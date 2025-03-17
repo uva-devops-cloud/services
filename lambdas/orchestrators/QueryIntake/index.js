@@ -55,13 +55,17 @@ exports.handler = async (event, context) => {
         const userMessage = extractUserMessage(event);
         
         // Validate and extract user identity from JWT
-        const userIdentity = await validateAndExtractUserIdentity(event);
-        console.log('User identity validation result:', JSON.stringify(userIdentity));
-        
-        if (!userIdentity.isValid) {
-            console.log('Authentication failed:', userIdentity.error || 'No specific error provided');
+        const tokenValidationResult = await validateToken(event.headers.Authorization);
+        if (!tokenValidationResult.valid) {
+            console.log('Authentication failed:', tokenValidationResult.message);
             return formatErrorResponse(401, 'Unauthorized: Invalid or missing authentication');
         }
+        
+        const userIdentity = {
+            userId: tokenValidationResult.userId,
+            username: tokenValidationResult.username,
+            scopes: tokenValidationResult.scopes
+        };
         
         if (!userMessage) {
             return formatErrorResponse(400, 'Missing required field: message');
@@ -78,8 +82,8 @@ exports.handler = async (event, context) => {
         const analyzerPayload = {
             correlationId,
             userId: userIdentity.userId,
-            userEmail: userIdentity.email,
-            userName: userIdentity.name,
+            userEmail: userIdentity.username,
+            userName: userIdentity.username,
             message: userMessage,
             timestamp: new Date().toISOString()
         };
@@ -148,62 +152,60 @@ function extractUserMessage(event) {
 }
 
 /**
- * Validate and extract user identity from JWT token in Authorization header
+ * Manually verify the token from the Authorization header
+ * This is a fallback in case API Gateway authorizer fails
  * 
- * @param {Object} event - The Lambda event
- * @returns {Object} - Object containing userId, email, name, and isValid flag
+ * @param {string} authHeader - Authorization header
+ * @returns {Object} - Token validation result
  */
-async function validateAndExtractUserIdentity(event) {
-    try {
-        console.log('Validating user identity from event:', JSON.stringify({
-            headers: event.headers,
-            hasAuthorization: event.headers && !!event.headers.Authorization
-        }));
-        
-        // Check if Authorization header exists
-        if (!event.headers || !event.headers.Authorization) {
-            console.log('No Authorization header found');
-            return { isValid: false, error: 'No Authorization header provided' };
-        }
-        
-        const authHeader = event.headers.Authorization;
-        console.log('Auth header format:', authHeader.substring(0, 10) + '...');
-        
-        // Extract the token part (remove "Bearer " prefix if present)
-        const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader;
-        
-        if (!token) {
-            console.log('Token is empty after extraction');
-            return { isValid: false, error: 'Empty token' };
-        }
-        
-        try {
-            // Decode the JWT to extract user information (without verification for debugging)
-            const decodedToken = jwt.decode(token, { complete: true });
-            console.log('Decoded token payload:', JSON.stringify(decodedToken?.payload || 'Invalid token format'));
-            
-            // For now, just return the decoded information for debugging
-            if (!decodedToken || !decodedToken.payload) {
-                return { isValid: false, error: 'Invalid token format' };
-            }
-            
-            // Add your JWT verification logic here when ready
-            // ...
-
-            return {
-                isValid: true,
-                userId: decodedToken.payload.sub,
-                email: decodedToken.payload.email || '',
-                name: decodedToken.payload.name || ''
-            };
-        } catch (tokenError) {
-            console.error('Token processing error:', tokenError);
-            return { isValid: false, error: `Token processing error: ${tokenError.message}` };
-        }
-    } catch (error) {
-        console.error('Error in validateAndExtractUserIdentity:', error);
-        return { isValid: false, error: error.message };
+async function validateToken(authHeader) {
+  try {
+    console.log('Manual token validation started');
+    
+    if (!authHeader) {
+      console.error('Authorization header is missing');
+      return { valid: false, message: 'Authorization header is missing' };
     }
+
+    // Extract the token from the Authorization header
+    const tokenParts = authHeader.split(' ');
+    if (tokenParts.length !== 2 || tokenParts[0] !== 'Bearer') {
+      console.error('Authorization header format is invalid. Expected "Bearer token"');
+      return { valid: false, message: 'Invalid Authorization header format' };
+    }
+
+    const token = tokenParts[1];
+    console.log('Token extracted from Authorization header:', token.substring(0, 20) + '...');
+    
+    // For development purposes, simply validate token structure
+    try {
+      // Decode the JWT to extract user information (without verification for debugging)
+      const decodedToken = jwt.decode(token, { complete: true });
+      
+      if (!decodedToken || !decodedToken.payload) {
+        console.error('Invalid token format - could not decode');
+        return { valid: false, message: 'Invalid token format' };
+      }
+      
+      console.log('Token payload:', JSON.stringify(decodedToken.payload));
+      console.log('Token scopes:', decodedToken.payload.scope);
+      
+      // For development, accept any well-formed token
+      return { 
+        valid: true, 
+        token,
+        userId: decodedToken.payload.sub,
+        username: decodedToken.payload.username || decodedToken.payload.sub,
+        scopes: decodedToken.payload.scope || ''
+      };
+    } catch (decodeError) {
+      console.error('Error decoding token:', decodeError);
+      return { valid: false, message: 'Error decoding token', error: decodeError.message };
+    }
+  } catch (error) {
+    console.error('Error validating token:', error);
+    return { valid: false, message: 'Token validation error', error: error.message };
+  }
 }
 
 /**
