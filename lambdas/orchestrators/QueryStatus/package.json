@@ -1,14 +1,13 @@
 {
-  "name": "orchestrator",
+  "name": "query-status",
   "version": "1.0.0",
-  "description": "Lambda function to orchestrate the query processing workflow",
+  "description": "Lambda function to check the status of student queries",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "aws-sdk": "^2.1409.0",
-    "uuid": "^9.0.0"
+    "aws-sdk": "^2.1409.0"
   },
   "author": "",
   "license": "ISC"

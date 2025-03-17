@@ -20,16 +20,16 @@ jobs:
       aws_account_id: "474668415523"
       lambda_functions: >-
         [
-          {"name": "get-student-data", "directory": "lambda/worker/GetStudentData"},
-          {"name": "get-student-courses", "directory": "lambda/worker/GetStudentCourses"},
-          {"name": "get-program-details", "directory": "lambda/worker/GetProgramDetails"},
-          {"name": "hello_world", "directory": "lambda/HelloWorld"},
-          {"name": "student-query-answer-generator", "directory": "lambda/query/AnswerGenerator"},
-          {"name": "student-query-intake", "directory": "lambda/query/QueryIntake"},
-          {"name": "student-query-llm-analyzer", "directory": "lambda/query/LLMQueryAnalyzer"},
-          {"name": "student-query-worker-dispatcher", "directory": "lambda/query/WorkerDispatcher"},
-          {"name": "student-query-response-aggregator", "directory": "lambda/query/ResponseAggregator"},
-          {"name": "student-query-orchestrator", "directory": "lambda/query/Orchestrator"}
+          {"name": "get-student-data", "directory": "lambdas/workers/GetStudentData"},
+          {"name": "get-student-courses", "directory": "lambdas/workers/GetStudentCourses"},
+          {"name": "get-program-details", "directory": "lambdas/workers/GetProgramDetails"},
+          {"name": "hello_world", "directory": "lambdas/HelloWorld"},
+          {"name": "student-query-intake", "directory": "lambdas/orchestrators/QueryIntake"},
+          {"name": "student-query-llm-analyzer", "directory": "lambdas/orchestrators/LLMQueryAnalyzer"},
+          {"name": "student-query-worker-dispatcher", "directory": "lambdas/orchestrators/WorkerDispatcher"},
+          {"name": "student-query-response-aggregator", "directory": "lambdas/orchestrators/ResponseAggregator"},
+          {"name": "student-query-answer-generator", "directory": "lambdas/orchestrators/AnswerGenerator"},
+          {"name": "student-query-status", "directory": "lambdas/orchestrators/QueryStatus"}
         ]
 
   deploy-prod:
