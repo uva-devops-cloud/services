@@ -100,38 +100,20 @@ exports.handler = async (event, context) => {
             // Store the direct response in DynamoDB
             await storeDirectResponse(correlationId, userIdentity.userId, userMessage, analyzerResult.directResponse);
             
-            return {
-                statusCode: 200,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
-                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Origin'
-                },
-                body: JSON.stringify({
-                    correlationId,
-                    message: 'Query processed successfully',
-                    status: 'complete',
-                    answer: analyzerResult.directResponse
-                })
-            };
+            return formatSuccessResponse(200, {
+                correlationId,
+                message: 'Query processed successfully',
+                status: 'complete',
+                answer: analyzerResult.directResponse
+            });
         }
         
         // Return the correlation ID to the frontend for status polling
-        return {
-            statusCode: 200,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
-                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Origin'
-            },
-            body: JSON.stringify({
-                correlationId,
-                message: 'Query received and processing',
-                status: 'processing'
-            })
-        };
+        return formatSuccessResponse(200, {
+            correlationId,
+            message: 'Query received and processing',
+            status: 'processing'
+        });
         
     } catch (error) {
         console.error('Error processing request:', error);
@@ -280,7 +262,26 @@ async function storeDirectResponse(correlationId, userId, question, answer) {
 }
 
 /**
- * Format an error response
+ * Format a successful response with CORS headers
+ * 
+ * @param {number} statusCode - HTTP status code
+ * @param {Object} body - Response body
+ * @returns {Object} - Formatted successful response
+ */
+function formatSuccessResponse(statusCode, body) {
+    return {
+        statusCode: statusCode,
+        headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
+            'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Origin'
+        },
+        body: JSON.stringify(body)
+    };
+}
+
+/**
+ * Format an error response with CORS headers
  * 
  * @param {number} statusCode - HTTP status code
  * @param {string} message - Error message
@@ -288,16 +289,14 @@ async function storeDirectResponse(correlationId, userId, question, answer) {
  */
 function formatErrorResponse(statusCode, message) {
     return {
-        statusCode,
+        statusCode: statusCode,
         headers: {
-            'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
             'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Origin'
         },
         body: JSON.stringify({
-            message,
-            status: 'error'
+            error: message
         })
     };
 }
