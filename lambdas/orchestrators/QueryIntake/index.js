@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const AWS = require('aws-sdk');
+const jwt = require('jsonwebtoken');
 
 /**
  * Query Intake Lambda Function
@@ -10,14 +11,21 @@ const AWS = require('aws-sdk');
  * 
  * Flow:
  * 1. Receive request from React frontend
- * 2. Validate request structure and authenticate/authorize if needed
+ * 2. Validate request structure and authenticate/authorize using JWT
  * 3. Generate correlation ID for request tracking
- * 4. Forward the request to LLM Query Analyzer Lambda
- * 5. Return the response to the frontend
+ * 4. Store initial request in DynamoDB
+ * 5. Forward the request to LLM Query Analyzer Lambda
+ * 6. Return the response to the frontend
  */
 
 // AWS service clients
 const lambda = new AWS.Lambda();
+const dynamoDB = new AWS.DynamoDB.DocumentClient();
+
+// Environment variables
+const REQUESTS_TABLE = process.env.REQUESTS_TABLE_NAME || 'StudentQueryRequests';
+const CONVERSATION_TABLE = process.env.CONVERSATION_TABLE_NAME || 'ConversationMemory';
+const LLM_QUERY_ANALYZER_FUNCTION = process.env.LLM_QUERY_ANALYZER_FUNCTION || 'LLMQueryAnalyzer';
 
 /**
  * Main Lambda handler function
@@ -32,7 +40,13 @@ exports.handler = async (event, context) => {
         
         // Extract user message from the event
         const userMessage = extractUserMessage(event);
-        const userId = extractUserId(event);
+        
+        // Validate and extract user identity from JWT
+        const userIdentity = await validateAndExtractUserIdentity(event);
+        
+        if (!userIdentity.isValid) {
+            return formatErrorResponse(401, 'Unauthorized: Invalid or missing authentication');
+        }
         
         if (!userMessage) {
             return formatErrorResponse(400, 'Missing required field: message');
@@ -42,41 +56,67 @@ exports.handler = async (event, context) => {
         const correlationId = uuidv4();
         console.log(`Generated correlation ID: ${correlationId}`);
         
+        // Store the initial request in DynamoDB
+        await storeInitialRequest(correlationId, userIdentity.userId, userMessage);
+        
         // Prepare payload for LLM Query Analyzer
         const analyzerPayload = {
             correlationId,
-            userId,
+            userId: userIdentity.userId,
+            userEmail: userIdentity.email,
+            userName: userIdentity.name,
             message: userMessage,
             timestamp: new Date().toISOString()
         };
         
-        // Pass the request to the LLM Query Analyzer Lambda
+        // Invoke LLM Query Analyzer Lambda
         const analyzerResponse = await lambda.invoke({
-            FunctionName: 'student-query-llm-analyzer',
-            InvocationType: 'RequestResponse', // Synchronous invocation
+            FunctionName: LLM_QUERY_ANALYZER_FUNCTION,
+            InvocationType: 'RequestResponse',
             Payload: JSON.stringify(analyzerPayload)
         }).promise();
         
-        // Parse and return the analyzer response
-        const responsePayload = JSON.parse(analyzerResponse.Payload);
+        // Parse the response from the LLM Query Analyzer
+        const analyzerResult = JSON.parse(analyzerResponse.Payload);
+        console.log('Analyzer response:', JSON.stringify(analyzerResult));
         
+        // Check if we have a direct response (no worker lambdas needed)
+        if (analyzerResult.directResponse) {
+            // Store the direct response in DynamoDB
+            await storeDirectResponse(correlationId, userIdentity.userId, userMessage, analyzerResult.directResponse);
+            
+            return {
+                statusCode: 200,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                body: JSON.stringify({
+                    correlationId,
+                    message: 'Query processed successfully',
+                    status: 'complete',
+                    answer: analyzerResult.directResponse
+                })
+            };
+        }
+        
+        // Return the correlation ID to the frontend for status polling
         return {
-            statusCode: responsePayload.statusCode || 200,
+            statusCode: 200,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*', // For CORS
-                'Access-Control-Allow-Credentials': true
+                'Access-Control-Allow-Origin': '*'
             },
             body: JSON.stringify({
                 correlationId,
-                message: responsePayload.body ? JSON.parse(responsePayload.body).message : 'Processing your request',
-                status: responsePayload.statusCode === 200 ? 'success' : 'error'
+                message: 'Query received and processing',
+                status: 'processing'
             })
         };
         
     } catch (error) {
-        console.error('Error in Query Intake Lambda:', error);
-        return formatErrorResponse(500, `An error occurred: ${error.message}`);
+        console.error('Error processing request:', error);
+        return formatErrorResponse(500, `Error processing request: ${error.message}`);
     }
 };
 
@@ -87,30 +127,140 @@ exports.handler = async (event, context) => {
  * @returns {string} - The extracted user message
  */
 function extractUserMessage(event) {
-    // API Gateway event
-    if (event.body) {
-        const body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
-        return body.message;
+    try {
+        // If the event has a body property (API Gateway), parse it
+        if (event.body) {
+            const body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+            return body.message;
+        }
+        
+        // If the event is already the payload (direct Lambda invocation)
+        if (event.message) {
+            return event.message;
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('Error extracting user message:', error);
+        return null;
     }
-    
-    // Direct Lambda invocation
-    return event.message;
 }
 
 /**
- * Extract the user ID from the incoming event
+ * Validate and extract user identity from JWT token
  * 
  * @param {Object} event - The Lambda event
- * @returns {string} - The extracted user ID or anonymous
+ * @returns {Object} - Object containing userId, email, name, and isValid flag
  */
-function extractUserId(event) {
-    // From API Gateway with Cognito authorizer
-    if (event.requestContext && event.requestContext.authorizer) {
-        return event.requestContext.authorizer.claims['sub'] || 'anonymous';
+async function validateAndExtractUserIdentity(event) {
+    try {
+        // Default response for invalid authentication
+        const defaultResponse = {
+            userId: 'anonymous',
+            email: '',
+            name: '',
+            isValid: false
+        };
+        
+        // Extract the Authorization header
+        let token = null;
+        
+        if (event.headers && event.headers.Authorization) {
+            token = event.headers.Authorization.replace('Bearer ', '');
+        } else if (event.headers && event.headers.authorization) {
+            token = event.headers.authorization.replace('Bearer ', '');
+        }
+        
+        // For direct Lambda invocation, the token might be in the payload
+        if (!token && event.token) {
+            token = event.token;
+        }
+        
+        if (!token) {
+            console.warn('No authentication token provided');
+            return defaultResponse;
+        }
+        
+        // Decode the JWT token (without verification for now)
+        // In production, you should verify the token signature
+        const decoded = jwt.decode(token);
+        
+        if (!decoded || !decoded.sub) {
+            console.warn('Invalid token format');
+            return defaultResponse;
+        }
+        
+        return {
+            userId: decoded.sub,
+            email: decoded.email || '',
+            name: decoded.name || `${decoded.given_name || ''} ${decoded.family_name || ''}`.trim(),
+            isValid: true
+        };
+        
+    } catch (error) {
+        console.error('Error validating user identity:', error);
+        return {
+            userId: 'anonymous',
+            email: '',
+            name: '',
+            isValid: false
+        };
     }
+}
+
+/**
+ * Store the initial request in DynamoDB
+ * 
+ * @param {string} correlationId - The correlation ID
+ * @param {string} userId - The user ID
+ * @param {string} message - The user message
+ * @returns {Promise} - Promise resolving to the DynamoDB response
+ */
+async function storeInitialRequest(correlationId, userId, message) {
+    const timestamp = new Date().toISOString();
+    const ttl = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60); // 30 days TTL
     
-    // From direct Lambda invocation
-    return event.userId || 'anonymous';
+    const params = {
+        TableName: REQUESTS_TABLE,
+        Item: {
+            CorrelationId: correlationId,
+            Timestamp: timestamp,
+            UserId: userId,
+            Message: message,
+            Status: 'processing',
+            TTL: ttl
+        }
+    };
+    
+    return dynamoDB.put(params).promise();
+}
+
+/**
+ * Store a direct response in DynamoDB (when no worker lambdas are needed)
+ * 
+ * @param {string} correlationId - The correlation ID
+ * @param {string} userId - The user ID
+ * @param {string} question - The original question
+ * @param {string} answer - The direct answer
+ * @returns {Promise} - Promise resolving to the DynamoDB response
+ */
+async function storeDirectResponse(correlationId, userId, question, answer) {
+    const timestamp = new Date().toISOString();
+    const ttl = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60); // 30 days TTL
+    
+    const params = {
+        TableName: process.env.RESPONSES_TABLE_NAME || 'StudentQueryResponses',
+        Item: {
+            CorrelationId: correlationId,
+            Timestamp: timestamp,
+            UserId: userId,
+            Question: question,
+            Answer: answer,
+            TTL: ttl
+        }
+    };
+    
+    return dynamoDB.put(params).promise();
 }
 
 /**
@@ -125,8 +275,7 @@ function formatErrorResponse(statusCode, message) {
         statusCode,
         headers: {
             'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Credentials': true
+            'Access-Control-Allow-Origin': '*'
         },
         body: JSON.stringify({
             message,

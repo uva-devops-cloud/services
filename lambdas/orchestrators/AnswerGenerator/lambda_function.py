@@ -4,6 +4,7 @@ import boto3
 from typing import Dict, Any, List
 import sys
 from datetime import datetime
+import time
 
 # Import the agent code
 from agent.agent_logic import create_portal_agent
@@ -11,6 +12,9 @@ from agent.tools import check_gpa, get_name
 
 # AWS clients
 dynamodb = boto3.resource('dynamodb')
+requests_table = dynamodb.Table(os.environ.get('REQUESTS_TABLE_NAME', 'StudentQueryRequests'))
+responses_table = dynamodb.Table(os.environ.get('RESPONSES_TABLE_NAME', 'StudentQueryResponses'))
+conversation_table = dynamodb.Table(os.environ.get('CONVERSATION_TABLE_NAME', 'ConversationMemory'))
 secretsmanager = boto3.client('secretsmanager')
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -22,10 +26,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     
     Flow:
     1. Receive aggregated data from Response Aggregator Lambda
-    2. Format the data for the LLM
-    3. Call the LLM to generate a final answer
-    4. Store the final answer in DynamoDB
-    5. Return success/failure response
+    2. Load conversation history from DynamoDB
+    3. Format the data for the LLM
+    4. Call the LLM to generate a final answer
+    5. Update conversation history with the answer
+    6. Store the final answer in DynamoDB
+    7. Return success/failure response
     
     Args:
         event: Event from Response Aggregator Lambda
@@ -52,11 +58,17 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 })
             }
         
+        # Load conversation history for this user
+        conversation_history = load_conversation_history(user_id, correlation_id)
+        
         # Format the data for the LLM
         formatted_data = format_data_for_llm(message, responses)
         
         # Call the LLM for final answer generation
-        final_answer = generate_answer(user_id, message, formatted_data)
+        final_answer = generate_answer(user_id, message, formatted_data, conversation_history)
+        
+        # Update conversation history with the answer
+        update_conversation_history(user_id, correlation_id, "assistant", final_answer)
         
         # Store the final answer in DynamoDB
         store_response(correlation_id, user_id, message, final_answer)
@@ -81,6 +93,80 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             })
         }
 
+def load_conversation_history(user_id: str, correlation_id: str) -> List[Dict[str, str]]:
+    """
+    Load conversation history from DynamoDB
+    
+    Args:
+        user_id: Student ID
+        correlation_id: Correlation ID for the current conversation
+        
+    Returns:
+        List of conversation messages
+    """
+    try:
+        # Query DynamoDB for conversation history
+        response = conversation_table.query(
+            KeyConditionExpression="UserId = :userId AND CorrelationId = :correlationId",
+            ExpressionAttributeValues={
+                ":userId": user_id,
+                ":correlationId": correlation_id
+            }
+        )
+        
+        # If no history found, return empty list
+        if not response.get('Items'):
+            return []
+        
+        # Sort messages by timestamp
+        messages = response.get('Items', [])
+        messages.sort(key=lambda x: x.get('Timestamp', ''))
+        
+        # Format messages for LLM
+        formatted_messages = []
+        for msg in messages:
+            formatted_messages.append({
+                'role': msg.get('Role'),
+                'content': msg.get('Content')
+            })
+        
+        return formatted_messages
+        
+    except Exception as e:
+        print(f"Error loading conversation history: {str(e)}")
+        return []
+
+def update_conversation_history(user_id: str, correlation_id: str, role: str, content: str) -> None:
+    """
+    Update conversation history in DynamoDB
+    
+    Args:
+        user_id: Student ID
+        correlation_id: Correlation ID for the current conversation
+        role: Message role (user or assistant)
+        content: Message content
+    """
+    try:
+        # Calculate TTL (15 minutes from now)
+        ttl = int(time.time()) + (15 * 60)
+        timestamp = int(time.time() * 1000)  # millisecond timestamp for sorting
+        
+        # Store message in DynamoDB
+        conversation_table.put_item(
+            Item={
+                'UserId': user_id,
+                'CorrelationId': correlation_id,
+                'MessageId': f"{timestamp}",
+                'Timestamp': timestamp,
+                'Role': role,
+                'Content': content,
+                'ExpirationTime': ttl
+            }
+        )
+        
+    except Exception as e:
+        print(f"Error updating conversation history: {str(e)}")
+
 def format_data_for_llm(original_message: str, responses: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Format aggregated data for the LLM
@@ -103,7 +189,7 @@ def format_data_for_llm(original_message: str, responses: List[Dict[str, Any]]) 
     
     return formatted_data
 
-def generate_answer(user_id: str, message: str, data: Dict[str, Any]) -> str:
+def generate_answer(user_id: str, message: str, data: Dict[str, Any], conversation_history: List[Dict[str, str]]) -> str:
     """
     Generate a final answer using the LLM
     
@@ -111,6 +197,7 @@ def generate_answer(user_id: str, message: str, data: Dict[str, Any]) -> str:
         user_id: Student ID
         message: Original student question
         data: Formatted data from worker lambdas
+        conversation_history: Previous conversation messages
         
     Returns:
         Final answer from LLM
@@ -130,11 +217,12 @@ def generate_answer(user_id: str, message: str, data: Dict[str, Any]) -> str:
         Student ID: {user_id}
         
         Remember to be helpful, accurate, and concise in your response.
+        If the student is asking a follow-up question, refer to the conversation history to maintain context.
         """
         
         # Initialize the LLM
         from langchain_anthropic import ChatAnthropic
-        from langchain_core.messages import SystemMessage, HumanMessage
+        from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
         
         # Create a one-time LLM instance for this specific task
         model = ChatAnthropic(
@@ -145,8 +233,20 @@ def generate_answer(user_id: str, message: str, data: Dict[str, Any]) -> str:
             api_key=api_key
         )
         
+        # Prepare messages including conversation history
+        messages = []
+        for msg in conversation_history:
+            if msg['role'] == 'user':
+                messages.append(HumanMessage(content=msg['content']))
+            elif msg['role'] == 'assistant':
+                messages.append(AIMessage(content=msg['content']))
+        
+        # Add the current message if it's not already in the history
+        if not conversation_history or conversation_history[-1]['role'] != 'user' or conversation_history[-1]['content'] != message:
+            messages.append(HumanMessage(content=message))
+        
         # Call the LLM
-        response = model.invoke([HumanMessage(content=message)])
+        response = model.invoke(messages)
         
         return response.content
         
@@ -165,10 +265,6 @@ def store_response(correlation_id: str, user_id: str, question: str, answer: str
         answer: Final answer from LLM
     """
     try:
-        # Get the table name from environment variable
-        responses_table_name = os.environ.get('RESPONSES_TABLE_NAME', 'StudentQueryResponses')
-        responses_table = dynamodb.Table(responses_table_name)
-        
         # Generate a timestamp for the response
         timestamp = datetime.utcnow().isoformat()
         
