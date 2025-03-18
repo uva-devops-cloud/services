@@ -79,6 +79,7 @@ jobs:
           else
             echo "No requirements.txt found, creating empty requirements-fixed.txt"
             touch requirements-fixed.txt
+          fi
 
       - name: Build Python Lambda package - ${{ matrix.function.name }}
         if: matrix.function.runtime == 'python'
@@ -116,6 +117,7 @@ jobs:
             echo "ERROR: ZIP file not found at ${{ matrix.function.directory }}/${{ matrix.function.name }}.zip"
             ls -la ${{ matrix.function.directory }}/
             exit 1
+          fi
 
       - name: Update Lambda code from S3 - ${{ matrix.function.name }}
         run: |
