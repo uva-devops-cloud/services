@@ -63,6 +63,7 @@ exports.handler = async (event, context) => {
         const tokenValidation = validateToken(authHeader);
         
         if (!tokenValidation.valid) {
+            console.error('Token validation failed:', tokenValidation.message);
             return formatErrorResponse(401, 'Unauthorized: Invalid token');
         }
         
