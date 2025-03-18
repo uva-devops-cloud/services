@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "aws-sdk": "^2.1409.0",
+    "jsonwebtoken": "^9.0.2",
     "uuid": "^9.0.0"
   },
   "author": "",
