@@ -57,43 +57,23 @@ Explanation of each field:
 Examples:
 • "Hello there"
   → small talk
-     {
-       "isSmallTalk": true,
-       "response": "Hello! How can I help you today?",
-       "explanation": "Greeting"
-     }
+
 
 • "When is the library open?"
   → small talk/general info
-     {
-       "isSmallTalk": true,
-       "response": "The library is open from 8 AM to 10 PM daily.",
-       "explanation": "General question, no student data needed"
-     }
+
 
 • "I want to know the best hamburger place in town"
   → out-of-scope
-     {
-       "isSmallTalk": true,
-       "response": "I’m sorry, but I can only assist with academic or student-related questions at this time.",
-       "explanation": "Not an academic or student query"
-     }
+
 
 • "How do I update my enrollment for next semester?"
   → academic question
-     {
-       "isSmallTalk": false,
-       "response": "",
-       "explanation": "Requires student data or official procedures"
-     }
+
 
 • "Where can I find the Wikipedia page about rabbits?"
   → out-of-scope
-     {
-       "isSmallTalk": true,
-       "response": "I’m sorry, but I can only assist with academic or student-related questions at this time.",
-       "explanation": "Not an academic or student query"
-     }
+
 """
 
 QUERY_ANALYSIS_SYSTEM_MESSAGE = """
