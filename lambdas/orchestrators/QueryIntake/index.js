@@ -13,8 +13,8 @@ const jwt = require('jsonwebtoken');
  * 1. Receive request from React frontend
  * 2. Validate request structure and authenticate/authorize using JWT
  * 3. Generate correlation ID for request tracking
- * 4. Store initial request in DynamoDB
- * 5. Forward the request to LLM Query Analyzer Lambda
+ * 4. 
+ * 5. Forward the request to LLM Query Analyzer LambdaStore initial request in DynamoDB
  * 6. Return the response to the frontend
  */
 
@@ -51,77 +51,90 @@ exports.handler = async (event, context) => {
             };
         }
         
-        // Extract user message from the event
+        // Extract query from request
         const userMessage = extractUserMessage(event);
         
-        // Validate and extract user identity from JWT
-        const tokenValidationResult = await validateToken(event.headers.Authorization);
-        if (!tokenValidationResult.valid) {
-            console.log('Authentication failed:', tokenValidationResult.message);
-            return formatErrorResponse(401, 'Unauthorized: Invalid or missing authentication');
-        }
-        
-        const userIdentity = {
-            userId: tokenValidationResult.userId,
-            username: tokenValidationResult.username,
-            scopes: tokenValidationResult.scopes
-        };
-        
         if (!userMessage) {
-            return formatErrorResponse(400, 'Missing required field: message');
+            return formatErrorResponse(400, 'No message provided in the request body');
         }
         
-        // Generate a unique correlation ID for tracking this request flow
+        // Validate the token from the Authorization header
+        const authHeader = event.headers ? (event.headers.Authorization || event.headers.authorization) : null;
+        const tokenValidation = validateToken(authHeader);
+        
+        if (!tokenValidation.valid) {
+            return formatErrorResponse(401, 'Unauthorized: Invalid token');
+        }
+        
+        // Generate a unique correlation ID for tracking
         const correlationId = uuidv4();
-        console.log(`Generated correlation ID: ${correlationId}`);
         
-        // Store the initial request in DynamoDB
-        await storeInitialRequest(correlationId, userIdentity.userId, userMessage);
+        // Extract user ID from token
+        const userId = tokenValidation.userId;
+        const username = tokenValidation.username;
         
-        // Prepare payload for LLM Query Analyzer
-        const analyzerPayload = {
+        console.log(`Processing request for user ${userId} with message: ${userMessage}`);
+        
+        // Ensure user data exists by checking and generating if needed
+        try {
+            await ensureUserDataExists(userId, username);
+        } catch (dataError) {
+            console.error('Error ensuring user data exists:', dataError);
+            // Continue with query - non-blocking error
+        }
+        
+        // Store initial request in DynamoDB
+        try {
+            await storeInitialRequest(correlationId, userId, userMessage);
+            console.log(`Stored initial request with correlation ID: ${correlationId}`);
+        } catch (storageError) {
+            console.error('Error storing initial request:', storageError);
+            // Continue with query - non-blocking error
+        }
+        
+        // Forward to LLM Query Analyzer Lambda
+        const payload = {
             correlationId,
-            userId: userIdentity.userId,
-            userEmail: userIdentity.username,
-            userName: userIdentity.username,
-            message: userMessage,
-            timestamp: new Date().toISOString()
+            userId,
+            message: userMessage
         };
         
-        // Invoke LLM Query Analyzer Lambda
-        const analyzerResponse = await lambda.invoke({
+        console.log(`Invoking LLM Query Analyzer with payload: ${JSON.stringify(payload)}`);
+        
+        const lambdaResponse = await lambda.invoke({
             FunctionName: LLM_ANALYZER_FUNCTION,
-            InvocationType: 'RequestResponse',
-            Payload: JSON.stringify(analyzerPayload)
+            InvocationType: 'RequestResponse', // Synchronous invocation
+            Payload: JSON.stringify(payload)
         }).promise();
         
-        // Parse the response from the LLM Query Analyzer
-        const analyzerResult = JSON.parse(analyzerResponse.Payload);
-        console.log('Analyzer response:', JSON.stringify(analyzerResult));
+        // Parse and process the Lambda response
+        const responsePayload = JSON.parse(lambdaResponse.Payload);
+        const responseBody = responsePayload.body ? JSON.parse(responsePayload.body) : {};
         
-        // Check if we have a direct response (no worker lambdas needed)
-        if (analyzerResult.directResponse) {
-            // Store the direct response in DynamoDB
-            await storeDirectResponse(correlationId, userIdentity.userId, userMessage, analyzerResult.directResponse);
-            
-            return formatSuccessResponse(200, {
-                correlationId,
-                message: 'Query processed successfully',
-                status: 'complete',
-                answer: analyzerResult.directResponse
-            });
+        console.log(`Received response from LLM Query Analyzer: ${JSON.stringify(responseBody)}`);
+        
+        // If the LLM determined no worker lambdas are needed, store the direct response
+        if (responseBody.requiresWorkers === false) {
+            try {
+                await storeDirectResponse(correlationId, userId, userMessage, responseBody.message);
+                console.log(`Stored direct response for correlation ID: ${correlationId}`);
+            } catch (storageError) {
+                console.error('Error storing direct response:', storageError);
+                // Continue with response - non-blocking error
+            }
         }
         
-        // Return the correlation ID to the frontend for status polling
+        // Return the response to the frontend
         return formatSuccessResponse(200, {
             correlationId,
-            message: 'Query received and processing',
-            status: 'processing'
+            message: responseBody.message,
+            requiresWorkers: responseBody.requiresWorkers,
+            status: 'success'
         });
         
     } catch (error) {
-        console.error('Error processing request:', error);
-        return formatErrorResponse(500, `Error processing request: ${error.message}`);
+        console.error('Error in Query Intake Lambda:', error);
+        return formatErrorResponse(500, `An error occurred: ${error.message}`);
     }
 };
 
@@ -206,6 +219,48 @@ async function validateToken(authHeader) {
     console.error('Error validating token:', error);
     return { valid: false, message: 'Token validation error', error: error.message };
   }
+}
+
+/**
+ * Ensure user data exists by checking and generating if needed
+ * 
+ * @param {string} userId - The user ID (Cognito sub)
+ * @param {string} username - The username
+ * @returns {Promise} - Promise resolving when user data is ensured
+ */
+async function ensureUserDataExists(userId, username) {
+    console.log(`Checking if user data exists for user ${userId} (${username})`);
+    
+    try {
+        // Call the UserDataGenerator Lambda
+        const lambda = new AWS.Lambda();
+        
+        const params = {
+            FunctionName: process.env.USER_DATA_GENERATOR_FUNCTION || 'student-query-user-data-generator',
+            InvocationType: 'RequestResponse', // Synchronous to ensure data exists before continuing
+            Payload: JSON.stringify({
+                cognitoSub: userId,
+                username: username
+            })
+        };
+        
+        console.log(`Invoking UserDataGenerator Lambda for user ${userId}`);
+        const response = await lambda.invoke(params).promise();
+        
+        if (response.FunctionError) {
+            throw new Error(`UserDataGenerator Lambda returned an error: ${response.Payload}`);
+        }
+        
+        const payload = JSON.parse(response.Payload);
+        const body = payload.body ? JSON.parse(payload.body) : {};
+        
+        console.log(`UserDataGenerator response: ${JSON.stringify(body)}`);
+        
+        return body;
+    } catch (error) {
+        console.error(`Error ensuring user data exists: ${error.message}`, error);
+        throw error;
+    }
 }
 
 /**
