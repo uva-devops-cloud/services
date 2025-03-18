@@ -452,13 +452,13 @@ def get_conversation_history(user_id: str) -> List[Dict]:
         timestamp_24h_ago = (datetime.now() - timedelta(days=1)).isoformat()
         
         response = table.query(
-            KeyConditionExpression='user_id = :uid AND #ts > :ts',
+            KeyConditionExpression='UserId = :uid AND #ts > :ts',  # Use correct case: UserId
             ExpressionAttributeValues={
                 ':uid': user_id,
                 ':ts': timestamp_24h_ago
             },
             ExpressionAttributeNames={
-                '#ts': 'timestamp'  # Escape the reserved keyword
+                '#ts': 'timestamp'  # Handle reserved keyword
             },
             ScanIndexForward=True  # Sort by timestamp ascending
         )
