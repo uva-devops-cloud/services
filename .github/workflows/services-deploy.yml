@@ -12,7 +12,7 @@ on:
       lambda_functions:
         required: false
         type: string
-        description: 'JSON array of Lambda functions to deploy, e.g. [{"name": "db-migration-runner", "directory": "lambda", "runtime": "nodejs"}]'
+        description: 'JSON array of Lambda functions to deploy, e.g. [{"name": "db-migration-runner", "directory": "lambda"}, {"name": "course-details", "directory": "services/CourseDetails"}]'
         default: "[]"
 
 permissions:
@@ -41,56 +41,16 @@ jobs:
           role-session-name: GitHubLambdaDeploySession
           aws-region: ${{ env.AWS_REGION}}
 
-      - name: Detect function runtime
-        id: detect-runtime
-        run: |
-          cd ${{ matrix.function.directory }}
-          if [ -d "python" ]; then
-            echo "runtime=python" >> $GITHUB_OUTPUT
-          elif [ -f "package.json" ]; then
-            echo "runtime=nodejs" >> $GITHUB_OUTPUT
-          else
-            echo "No identifiable runtime found. Defaulting to nodejs."
-            echo "runtime=nodejs" >> $GITHUB_OUTPUT
-          fi
-
-      # Setup and build Node.js lambdas
       - name: Install Node.js
-        if: steps.detect-runtime.outputs.runtime == 'nodejs'
         uses: actions/setup-node@v3
         with:
           node-version: "18"
 
-      - name: Build Node.js Lambda package - ${{ matrix.function.name }}
-        if: steps.detect-runtime.outputs.runtime == 'nodejs'
+      - name: Build Lambda package - ${{ matrix.function.name }}
         run: |
           cd ${{ matrix.function.directory }}
           npm install --production
           zip -r ../${{ matrix.function.name }}.zip .
-
-      # Setup and build Python lambdas
-      - name: Install Python
-        if: steps.detect-runtime.outputs.runtime == 'python'
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.9"
-
-      - name: Build Python Lambda package - ${{ matrix.function.name }}
-        if: steps.detect-runtime.outputs.runtime == 'python'
-        run: |
-          cd ${{ matrix.function.directory }}
-          mkdir -p ./package
-          # Install dependencies
-          pip install -r python/requirements.txt -t ./package
-          # Copy Lambda function code
-          cp python/lambda_function.py ./package/
-          # Copy agent directories if they exist
-          if [ -d "agent" ]; then
-            mkdir -p ./package/agent
-            cp -r agent/* ./package/agent/
-          fi
-          cd ./package
-          zip -r ../../${{ matrix.function.name }}.zip .
 
       - name: Upload Lambda package to S3 - ${{ matrix.function.name }}
         run: |
