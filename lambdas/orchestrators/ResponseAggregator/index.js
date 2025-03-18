@@ -33,26 +33,24 @@ const CONFIG = {
  * @returns {Object} - Success/failure response
  */
 exports.handler = async (event, context) => {
+    console.log('Received event:', JSON.stringify(event));
+    
     try {
-        console.log('Received worker response event:', JSON.stringify(event));
-        
-        // Process only worker response events
+        // Verify this is a worker response event
         if (!isWorkerResponseEvent(event)) {
+            console.log('Not a worker response event, ignoring');
             return { statusCode: 200, message: 'Not a worker response event' };
         }
         
-        // Extract correlation ID and source from the event
-        const { correlationId, source, data } = extractResponseData(event);
+        // Extract response data from the event
+        const { correlationId, workerName, data, timestamp } = extractResponseData(event);
         
-        if (!correlationId || !source) {
-            return { 
-                statusCode: 400, 
-                message: 'Missing required correlation ID or source in event' 
-            };
+        if (!correlationId || !workerName || !data) {
+            throw new Error('Missing required parameters in worker response');
         }
         
-        // Store the response in DynamoDB
-        await storeWorkerResponse(correlationId, source, data);
+        // Store the worker response
+        await storeWorkerResponse(correlationId, workerName, data, timestamp);
         
         // Check if all expected responses have been received
         const isComplete = await checkRequestCompletion(correlationId);
@@ -93,9 +91,7 @@ exports.handler = async (event, context) => {
  * @returns {boolean} - Whether this is a worker response event
  */
 function isWorkerResponseEvent(event) {
-    // Check source pattern and detail type
-    return event.source && 
-           event.source.startsWith('student.query.worker') && 
+    return event.source === 'student.query.worker' && 
            event['detail-type'] && 
            event['detail-type'].endsWith('Response');
 }
@@ -104,16 +100,17 @@ function isWorkerResponseEvent(event) {
  * Extract response data from the event
  * 
  * @param {Object} event - The EventBridge event
- * @returns {Object} - Extracted correlation ID, source, and data
+ * @returns {Object} - Extracted correlation ID, worker name, data, and timestamp
  */
 function extractResponseData(event) {
-    const detail = event.detail || {};
-    const source = event['detail-type'].replace('Response', '');
+    const detail = JSON.parse(event.detail || '{}');
+    const workerName = event['detail-type'].replace('Response', '');
     
     return {
         correlationId: detail.correlationId,
-        source,
-        data: detail.data || {}
+        workerName,
+        data: detail.data,
+        timestamp: detail.timestamp || new Date().toISOString()
     };
 }
 
@@ -121,13 +118,12 @@ function extractResponseData(event) {
  * Store worker response in DynamoDB
  * 
  * @param {string} correlationId - Correlation ID for the request
- * @param {string} source - Source of the response (worker lambda type)
+ * @param {string} workerName - Name of the worker that responded
  * @param {Object} data - Response data from the worker
+ * @param {string} timestamp - Timestamp of the response
  * @returns {Promise} - Promise resolving to DynamoDB update response
  */
-async function storeWorkerResponse(correlationId, source, data) {
-    const timestamp = new Date().toISOString();
-    
+async function storeWorkerResponse(correlationId, workerName, data, timestamp) {
     const params = {
         TableName: CONFIG.requestsTableName,
         Key: { CorrelationId: correlationId },
@@ -136,7 +132,7 @@ async function storeWorkerResponse(correlationId, source, data) {
             'UpdatedAt = :timestamp',
         ExpressionAttributeValues: {
             ':response': [{
-                Source: source,
+                WorkerName: workerName,
                 Timestamp: timestamp,
                 Data: data
             }],
@@ -170,10 +166,10 @@ async function checkRequestCompletion(correlationId) {
     const request = result.Item;
     const requiredSources = request.RequiredSources || [];
     const receivedResponses = request.ReceivedResponses || [];
-    const receivedSources = new Set(receivedResponses.map(r => r.Source));
+    const receivedWorkers = new Set(receivedResponses.map(r => r.WorkerName));
     
     // Check if all required sources have responded
-    const isComplete = requiredSources.every(source => receivedSources.has(source));
+    const isComplete = requiredSources.every(source => receivedWorkers.has(source));
     
     if (isComplete && !request.IsComplete) {
         // Update the request status to complete
@@ -209,11 +205,17 @@ async function retrieveAllResponses(correlationId) {
         throw new Error(`Request with correlation ID ${correlationId} not found`);
     }
     
+    // Transform responses into a more usable format
+    const transformedResponses = {};
+    result.Item.ReceivedResponses.forEach(response => {
+        transformedResponses[response.WorkerName] = response.Data;
+    });
+    
     return {
         correlationId,
         userId: result.Item.UserId,
         message: result.Item.Message,
-        responses: result.Item.ReceivedResponses || []
+        responses: transformedResponses
     };
 }
 

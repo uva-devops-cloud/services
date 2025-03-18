@@ -23,7 +23,12 @@ jobs:
             {"name": "get-student-data", "directory": "lambdas/workers/GetStudentData", "runtime": "nodejs"},
             {"name": "get-student-courses", "directory": "lambdas/workers/GetStudentCourses", "runtime": "nodejs"},
             {"name": "get-program-details", "directory": "lambdas/workers/GetProgramDetails", "runtime": "nodejs"},
+            {"name": "get-course-details", "directory": "lambdas/workers/GetCourseDetails", "runtime": "nodejs"},
+            {"name": "get-enrollment-status", "directory": "lambdas/workers/GetEnrollmentStatus", "runtime": "nodejs"},
+            {"name": "get-usage-info", "directory": "lambdas/workers/GetUsageInfo", "runtime": "nodejs"},
+
             {"name": "hello_world", "directory": "lambdas/HelloWorld", "runtime": "nodejs"},
+            
             {"name": "student-query-intake", "directory": "lambdas/orchestrators/QueryIntake", "runtime": "nodejs"},
             {"name": "student-query-llm-analyzer", "directory": "lambdas/orchestrators/LLMQueryAnalyzer", "runtime": "python"},
             {"name": "student-query-worker-dispatcher", "directory": "lambdas/orchestrators/WorkerDispatcher", "runtime": "nodejs"},

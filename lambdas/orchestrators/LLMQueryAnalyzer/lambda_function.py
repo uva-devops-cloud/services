@@ -53,16 +53,62 @@ Examples that require database access (not small talk):
 
 QUERY_ANALYSIS_SYSTEM_MESSAGE = """
 You are a specialized AI designed to analyze student queries about their academic records.
-Your task is to determine what data sources and operations are needed to answer the query.
+Your task is to determine which basic data retrieval workers need to be invoked to gather the required information.
 
 Analyze the user's query and output a JSON object with the following fields:
-- "dataSources": an array of required data sources ("courses", "grades", "enrollment", "financial", "academic_calendar", etc.)
-- "operations": an array of operations needed ("retrieve", "calculate", "compare", "summarize")
-- "parameters": key parameters relevant to the query (course_id, semester, year, etc.)
+- "requiredWorkers": an array of worker lambda names that need to be invoked. Available workers are:
+  * "GetStudentData" - Basic student information (name, start year, graduation year)
+  * "GetStudentCourses" - All courses a student is enrolled in (with grades and status)
+  * "GetProgramDetails" - Program information (name, director)
+  * "GetProgramCourses" - All courses required for a program
+  * "GetEnrollmentInfo" - Student's program enrollment details (status, GPA)
+  * "GetUsageInfo" - LLM credits usage information
+- "parameters": key parameters needed for the workers (student_id, program_id, etc.)
 - "question_type": classification of question ("status", "performance", "requirements", "schedule")
 - "complexity": estimated complexity ("simple", "moderate", "complex")
 
-If you are completely confident you can answer without any data retrieval, return an empty dataSources array.
+Example responses:
+1. For "What's my current GPA?":
+{
+  "requiredWorkers": ["GetStudentCourses"],
+  "parameters": {"student_id": 12345},  // Will be filled by WorkerDispatcher
+  "question_type": "performance",
+  "complexity": "moderate"
+}
+
+2. For "Which courses do I still need to take?":
+{
+  "requiredWorkers": ["GetStudentCourses", "GetProgramCourses"],
+  "parameters": {"student_id": 12345},
+  "question_type": "requirements",
+  "complexity": "complex"
+}
+
+3. For "When do I graduate?":
+{
+  "requiredWorkers": ["GetStudentData"],
+  "parameters": {"student_id": 12345},
+  "question_type": "status",
+  "complexity": "simple"
+}
+
+4. For "How many credits do I have left?":
+{
+  "requiredWorkers": ["GetUsageInfo"],
+  "parameters": {"student_id": 12345},
+  "question_type": "status",
+  "complexity": "simple"
+}
+
+5. For "Am I on track to graduate?":
+{
+  "requiredWorkers": ["GetStudentData", "GetStudentCourses", "GetProgramCourses"],
+  "parameters": {"student_id": 12345},
+  "question_type": "requirements",
+  "complexity": "complex"
+}
+
+If you are completely confident you can answer without any data retrieval, return an empty requiredWorkers array.
 """
 
 DIRECT_ANSWER_SYSTEM_MESSAGE = """
@@ -79,7 +125,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     if they require data retrieval or can be answered directly.
     
     Args:
-        event: Event from Query Intake Lambda
+        event: Event from Query Intake Lambda containing:
+            - userId: Cognito user ID
+            - studentId: Database student ID
+            - message: The student's query
+            - correlationId: Unique correlation ID
         context: Lambda context
         
     Returns:
@@ -91,9 +141,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Extract information from the event
         correlation_id = event.get('correlationId')
         user_id = event.get('userId')
+        student_id = event.get('studentId')
         message = event.get('message')
         
-        if not all([correlation_id, user_id, message]):
+        if not all([correlation_id, user_id, student_id, message]):
             return {
                 'statusCode': 400,
                 'body': json.dumps({
@@ -108,7 +159,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Check if this is small talk
         small_talk_response = check_for_small_talk(message, conversation_history)
         
-        if small_talk_response['isSmallTalk']:
+        if (small_talk_response['isSmallTalk']):
             logger.info("Small talk detected, providing direct response")
             
             # Store this conversation entry
@@ -134,9 +185,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         query_analysis = analyze_query(message, conversation_history)
         
         # Parse the required data sources
-        required_data = query_analysis.get('dataSources', [])
+        required_workers = query_analysis.get('requiredWorkers', [])
         
-        if not required_data:  # No data sources needed
+        if not required_workers:  # No workers needed
             # Get direct answer
             direct_response = get_direct_answer(message, conversation_history)
             
@@ -161,6 +212,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         dispatcher_payload = {
             'correlationId': correlation_id,
             'userId': user_id,
+            'studentId': student_id,  # Pass student_id to WorkerDispatcher
             'message': message,
             'analysis': query_analysis
         }
@@ -438,29 +490,23 @@ def format_conversation_history_for_prompt(conversation_history: List[Dict], lim
 def get_conversation_history(user_id: str) -> List[Dict]:
     """
     Retrieves conversation history from DynamoDB
-    
-    Args:
-        user_id: The user ID
-        
-    Returns:
-        List of conversation entries
     """
     try:
         table = dynamodb.Table(CONFIG['conversation_table_name'])
         
-        # Get records from the last 24 hours
-        timestamp_24h_ago = (datetime.now() - timedelta(days=1)).isoformat()
+        # Get records from the last hour
+        timestamp_1h_ago = (datetime.now() - timedelta(days=1)).isoformat()
         
         response = table.query(
             KeyConditionExpression='UserId = :uid AND #ts > :ts',  # Use correct case: UserId
             ExpressionAttributeValues={
                 ':uid': user_id,
-                ':ts': timestamp_24h_ago
+                ':ts': timestamp_1h_ago
             },
             ExpressionAttributeNames={
-                '#ts': 'timestamp'  # Handle reserved keyword
+                '#ts': 'timestamp'
             },
-            ScanIndexForward=True  # Sort by timestamp ascending
+            ScanIndexForward=True
         )
         
         # Convert to a simple list of question/answer pairs
