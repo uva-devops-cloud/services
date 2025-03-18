@@ -96,6 +96,9 @@ exports.handler = async (event, context) => {
             // Continue with query - non-blocking error
         }
         
+        console.log("correlationId", correlationId);
+        console.log("userId", userId);
+        console.log("userMessage", userMessage);
         // Forward to LLM Query Analyzer Lambda
         const payload = {
             correlationId,
