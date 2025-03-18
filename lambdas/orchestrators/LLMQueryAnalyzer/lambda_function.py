@@ -203,6 +203,10 @@ def get_llm_client() -> ChatAnthropic:
     """
     api_key = get_api_key_from_secrets()
     
+    # Add debug logging to help troubleshoot
+    logger.info(f"Initializing Anthropic client with API key length: {len(api_key)}")
+    logger.info(f"API key prefix: {api_key[:5]}...")
+    
     return ChatAnthropic(
         model="claude-3-haiku-20240307",
         temperature=0.1,
@@ -222,11 +226,33 @@ def get_api_key_from_secrets() -> str:
         response = secrets_client.get_secret_value(
             SecretId=CONFIG['llm_api_key_secret_arn']
         )
-        return response['SecretString']
+        
+        # Get the raw secret string
+        secret_string = response['SecretString']
+        
+        # Try to parse as JSON if it's in that format
+        try:
+            secret_json = json.loads(secret_string)
+            # If it's a JSON with a known key structure
+            if isinstance(secret_json, dict):
+                if 'apiKey' in secret_json:
+                    return secret_json['apiKey']
+                elif 'api_key' in secret_json:
+                    return secret_json['api_key']
+                # If JSON but without expected key, use first string value found
+                for key, value in secret_json.items():
+                    if isinstance(value, str) and value.startswith('sk-'):
+                        return value
+        except json.JSONDecodeError:
+            # Not JSON, check if it's a raw API key string
+            if secret_string.strip().startswith('sk-'):
+                return secret_string.strip()
+        
+        # If all else fails, return as is
+        return secret_string
     except Exception as e:
         logger.error(f"Error retrieving API key from Secrets Manager: {str(e)}")
         raise e
-
 
 def check_for_small_talk(message: str, conversation_history: List[Dict]) -> Dict:
     """
@@ -426,10 +452,13 @@ def get_conversation_history(user_id: str) -> List[Dict]:
         timestamp_24h_ago = (datetime.now() - timedelta(days=1)).isoformat()
         
         response = table.query(
-            KeyConditionExpression='user_id = :uid AND timestamp > :ts',
+            KeyConditionExpression='user_id = :uid AND #ts > :ts',
             ExpressionAttributeValues={
                 ':uid': user_id,
                 ':ts': timestamp_24h_ago
+            },
+            ExpressionAttributeNames={
+                '#ts': 'timestamp'  # Escape the reserved keyword
             },
             ScanIndexForward=True  # Sort by timestamp ascending
         )
