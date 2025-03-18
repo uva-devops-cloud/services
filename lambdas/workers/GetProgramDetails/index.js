@@ -18,17 +18,22 @@ exports.handler = async (event, context) => {
     if (event.source !== 'student.query.orchestrator' || 
         (event['detail-type'] !== 'GetProgramDetails' && !event.detail?.action === 'GetProgramDetails')) {
         console.log('Not a valid GetProgramDetails event');
-        return {
-            statusCode: 400,
-            body: JSON.stringify({ error: 'Invalid event format or source' })
-        };
+        await publishToEventBridge(event.detail?.correlationId, 'GetProgramDetails', {
+            error: 'Invalid event format or source',
+            status: 'ERROR'
+        });
+        return;
     }
     
     // Extract studentId from event
     const { studentId, correlationId } = event.detail;
     
     if (!studentId) {
-      throw new Error('Student ID is required');
+        await publishToEventBridge(correlationId, 'GetProgramDetails', {
+            error: 'Student ID is required',
+            status: 'ERROR'
+        });
+        return;
     }
     
     // Get database credentials and create connection
@@ -42,21 +47,18 @@ exports.handler = async (event, context) => {
     // Query program details for the student
     const programDetails = await queryProgramDetails(client, studentId);
     
-    return {
-      statusCode: 200,
-      body: JSON.stringify({
-        requestId: event.id,
-        studentId: studentId,
-        source: event.source,
-        result: programDetails
-      })
-    };
+    // Publish response to EventBridge
+    await publishToEventBridge(correlationId, 'GetProgramDetails', {
+        status: 'SUCCESS',
+        data: programDetails
+    });
+    
   } catch (error) {
     console.error('Error:', error.message);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: error.message })
-    };
+    await publishToEventBridge(event.detail?.correlationId, 'GetProgramDetails', {
+        error: error.message,
+        status: 'ERROR'
+    });
   } finally {
     if (client) {
       try {
@@ -68,6 +70,34 @@ exports.handler = async (event, context) => {
     }
   }
 };
+
+/**
+ * Publish response to EventBridge
+ */
+async function publishToEventBridge(correlationId, workerName, data) {
+    const params = {
+        Entries: [{
+            Source: 'student.query.worker',
+            DetailType: `${workerName}Response`,
+            Detail: JSON.stringify({
+                correlationId,
+                workerName,
+                data,
+                timestamp: new Date().toISOString()
+            }),
+            EventBusName: 'default',
+            Time: new Date()
+        }]
+    };
+
+    try {
+        await eventBridge.putEvents(params).promise();
+        console.log(`Published ${workerName} response to EventBridge for correlation ID: ${correlationId}`);
+    } catch (error) {
+        console.error('Error publishing to EventBridge:', error);
+        throw error;
+    }
+}
 
 /**
  * Get database configuration using secrets manager

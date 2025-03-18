@@ -3,6 +3,7 @@ const AWS = require('aws-sdk');
 
 // Initialize AWS services
 const secretsManager = new AWS.SecretsManager();
+const eventBridge = new AWS.EventBridge();
 
 // Helper for logging with timestamps
 const logWithTimestamp = (message) => {
@@ -122,15 +123,14 @@ exports.handler = async (event) => {
         event.detail && 
         (event.detail.action === 'GetCourseDetails' || event['detail-type'] === 'GetCourseDetails')) {
       
-      const { courseId, courseCode } = event.detail;
+      const { courseId, courseCode, correlationId } = event.detail;
       
       if (!courseId && !courseCode) {
-        return {
-          statusCode: 400,
-          body: JSON.stringify({ 
-            error: 'Either courseId or courseCode must be provided' 
-          })
-        };
+        await publishToEventBridge(correlationId, 'GetCourseDetails', {
+          status: 'ERROR',
+          error: 'Either courseId or courseCode must be provided'
+        });
+        return;
       }
       
       // Use course code if provided, otherwise use ID
@@ -140,23 +140,59 @@ exports.handler = async (event) => {
       // Get course details
       const courseDetails = await getCourseDetails(identifier, identifierType);
       
-      return {
-        statusCode: courseDetails.found ? 200 : 404,
-        body: JSON.stringify(courseDetails)
-      };
+      if (!courseDetails.found) {
+        await publishToEventBridge(correlationId, 'GetCourseDetails', {
+          status: 'ERROR',
+          error: 'Course not found'
+        });
+        return;
+      }
+      
+      await publishToEventBridge(correlationId, 'GetCourseDetails', {
+        status: 'SUCCESS',
+        data: courseDetails.course
+      });
+      
+    } else {
+      await publishToEventBridge(event.detail?.correlationId, 'GetCourseDetails', {
+        status: 'ERROR',
+        error: 'Invalid event format'
+      });
     }
-    
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: 'Invalid event format' })
-    };
     
   } catch (error) {
     logWithTimestamp(`Error processing request: ${error.message}`);
-    
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: 'Internal server error' })
-    };
+    await publishToEventBridge(event.detail?.correlationId, 'GetCourseDetails', {
+      status: 'ERROR',
+      error: 'Internal server error'
+    });
   }
 };
+
+/**
+ * Publish response to EventBridge
+ */
+async function publishToEventBridge(correlationId, workerName, data) {
+    const params = {
+        Entries: [{
+            Source: 'student.query.worker',
+            DetailType: `${workerName}Response`,
+            Detail: JSON.stringify({
+                correlationId,
+                workerName,
+                data,
+                timestamp: new Date().toISOString()
+            }),
+            EventBusName: 'default',
+            Time: new Date()
+        }]
+    };
+
+    try {
+        await eventBridge.putEvents(params).promise();
+        logWithTimestamp(`Published ${workerName} response to EventBridge for correlation ID: ${correlationId}`);
+    } catch (error) {
+        logWithTimestamp(`Error publishing to EventBridge: ${error.message}`);
+        throw error;
+    }
+}
