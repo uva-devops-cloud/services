@@ -504,8 +504,8 @@ async function getApiKeyFromSecrets() {
             SecretId: CONFIG.llmApiKeySecretArn
         }).promise();
         
-        const secret = JSON.parse(data.SecretString);
-        return secret.api_key;
+        // Return the API key
+        return data.SecretString;
     } catch (error) {
         console.error('Error retrieving API key from Secrets Manager:', error);
         throw new Error('Failed to retrieve LLM API key');
