@@ -536,29 +536,23 @@ def format_conversation_history_for_prompt(conversation_history: List[Dict], lim
 
     return formatted_history.strip()
 
-
 def get_conversation_history(user_id: str) -> List[Dict]:
     """
     Retrieves conversation history from DynamoDB
     """
     try:
         table = dynamodb.Table(CONFIG['conversation_table_name'])
-
-        # Get records from the last hour
-        timestamp_1h_ago = (datetime.now() - timedelta(days=1)).isoformat()
-
+        
+        # Query using the correct key schema (UserId as hash key)
         response = table.query(
-            KeyConditionExpression='UserId = :uid AND #ts > :ts',  # Use correct case: UserId
+            KeyConditionExpression='UserId = :uid',
             ExpressionAttributeValues={
-                ':uid': user_id,
-                ':ts': timestamp_1h_ago
+                ':uid': user_id
             },
-            ExpressionAttributeNames={
-                '#ts': 'timestamp'
-            },
-            ScanIndexForward=True
+            ScanIndexForward=True,
+            Limit=10  # Limit to last 10 conversations
         )
-
+        
         # Convert to a simple list of question/answer pairs
         history = []
         for item in response.get('Items', []):
@@ -567,13 +561,12 @@ def get_conversation_history(user_id: str) -> List[Dict]:
                 'answer': item.get('answer', ''),
                 'timestamp': item.get('timestamp', '')
             })
-
+        
         return history
-
+        
     except Exception as e:
         logger.error(f"Error retrieving conversation history: {str(e)}")
         return []  # Return empty list on error
-
 
 def store_conversation_history(user_id: str, correlation_id: str, question: str, answer: str) -> None:
     """
