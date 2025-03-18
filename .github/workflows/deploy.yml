@@ -18,7 +18,7 @@ jobs:
     with:
       environment: dev
       aws_account_id: "474668415523"
-      lambda_functions: >
+      lambda_functions: >-
         [
           {"name": "get-student-data", "directory": "lambdas/workers/GetStudentData"},
           {"name": "get-student-courses", "directory": "lambdas/workers/GetStudentCourses"},
@@ -29,7 +29,8 @@ jobs:
           {"name": "student-query-worker-dispatcher", "directory": "lambdas/orchestrators/WorkerDispatcher"},
           {"name": "student-query-response-aggregator", "directory": "lambdas/orchestrators/ResponseAggregator"},
           {"name": "student-query-answer-generator", "directory": "lambdas/orchestrators/AnswerGenerator"},
-          {"name": "student-query-status", "directory": "lambdas/orchestrators/QueryStatus"}
+          {"name": "student-query-status", "directory": "lambdas/orchestrators/QueryStatus"},
+          {"name": "student-query-user-data-generator", "directory": "lambdas/orchestrators/UserDataGenerator"}
         ]
 
   deploy-prod:
@@ -40,7 +41,7 @@ jobs:
     with:
       environment: prod
       aws_account_id: "054037129431"
-      lambda_functions: >
+      lambda_functions: >-
         [
           {"name": "get-program-details", "directory": "lambda/GetProgramDetails"},
           {"name": "hello_world", "directory": "lambda/HelloWorld"}
