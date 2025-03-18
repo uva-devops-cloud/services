@@ -3,6 +3,7 @@ const AWS = require('aws-sdk');
 
 // Initialize AWS clients
 const secretsManager = new AWS.SecretsManager();
+const eventBridge = new AWS.EventBridge();
 
 /**
  * Lambda handler for ProgramDetails 
@@ -13,8 +14,18 @@ exports.handler = async (event, context) => {
   let client = null;
   
   try {
+    // Verify this is the correct event source and type
+    if (event.source !== 'student.query.orchestrator' || 
+        (event['detail-type'] !== 'GetProgramDetails' && !event.detail?.action === 'GetProgramDetails')) {
+        console.log('Not a valid GetProgramDetails event');
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ error: 'Invalid event format or source' })
+        };
+    }
+    
     // Extract studentId from event
-    const { studentId } = event.detail;
+    const { studentId, correlationId } = event.detail;
     
     if (!studentId) {
       throw new Error('Student ID is required');

@@ -21,7 +21,8 @@ const secretsManager = new AWS.SecretsManager();
 // Configuration
 const CONFIG = {
     llmEndpoint: process.env.LLM_ENDPOINT || 'your-llm-endpoint',
-    llmApiKeySecretArn: process.env.LLM_API_KEY_SECRET_ARN
+    llmApiKeySecretArn: process.env.LLM_API_KEY_SECRET_ARN,
+    workerDispatcherFunction: process.env.WORKER_DISPATCHER_FUNCTION || 'student-query-worker-dispatcher'
 };
 
 /**
@@ -68,7 +69,7 @@ exports.handler = async (event, context) => {
         };
         
         const dispatcherResponse = await lambda.invoke({
-            FunctionName: 'student-query-worker-dispatcher',
+            FunctionName: CONFIG.workerDispatcherFunction,
             InvocationType: 'RequestResponse', // Synchronous invocation
             Payload: JSON.stringify(dispatcherPayload)
         }).promise();

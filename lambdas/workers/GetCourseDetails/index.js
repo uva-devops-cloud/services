@@ -118,9 +118,9 @@ exports.handler = async (event) => {
     logWithTimestamp('Received event: ' + JSON.stringify(event));
     
     // Check if this is an EventBridge event
-    if (event.source === 'course.query.service' && 
+    if (event.source === 'student.query.orchestrator' && 
         event.detail && 
-        event.detail.action === 'GetCourseDetails') {
+        (event.detail.action === 'GetCourseDetails' || event['detail-type'] === 'GetCourseDetails')) {
       
       const { courseId, courseCode } = event.detail;
       

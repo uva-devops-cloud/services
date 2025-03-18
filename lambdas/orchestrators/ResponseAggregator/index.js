@@ -21,7 +21,8 @@ const lambda = new AWS.Lambda();
 // Configuration
 const CONFIG = {
     requestsTableName: process.env.REQUESTS_TABLE_NAME || 'StudentQueryRequests',
-    answerGeneratorFunction: process.env.ANSWER_GENERATOR_FUNCTION || 'student-query-answer-generator'
+    answerGeneratorFunction: process.env.ANSWER_GENERATOR_FUNCTION || 'student-query-answer-generator',
+    conversationTableName: process.env.CONVERSATION_TABLE_NAME || 'ConversationMemory'
 };
 
 /**
