@@ -127,7 +127,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Args:
         event: Event from Query Intake Lambda containing:
             - userId: Cognito user ID
-            - studentId: Database student ID
             - message: The student's query
             - correlationId: Unique correlation ID
         context: Lambda context
@@ -141,10 +140,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Extract information from the event
         correlation_id = event.get('correlationId')
         user_id = event.get('userId')
-        student_id = event.get('studentId')
         message = event.get('message')
         
-        if not all([correlation_id, user_id, student_id, message]):
+        if not all([correlation_id, user_id, message]):
             return {
                 'statusCode': 400,
                 'body': json.dumps({
@@ -212,7 +210,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         dispatcher_payload = {
             'correlationId': correlation_id,
             'userId': user_id,
-            'studentId': student_id,  # Pass student_id to WorkerDispatcher
             'message': message,
             'analysis': query_analysis
         }

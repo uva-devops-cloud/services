@@ -1,7 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const AWS = require('aws-sdk');
 const jwt = require('jsonwebtoken');
-const { Client } = require('pg');
 
 /**
  * Query Intake Lambda Function
@@ -14,15 +13,13 @@ const { Client } = require('pg');
  * 1. Receive request from React frontend
  * 2. Validate request structure and authenticate/authorize using JWT
  * 3. Generate correlation ID for request tracking
- * 4. 
- * 5. Forward the request to LLM Query Analyzer LambdaStore initial request in DynamoDB
- * 6. Return the response to the frontend
+ * 4. Forward the request to LLM Query Analyzer Lambda
+ * 5. Return the response to the frontend
  */
 
 // AWS service clients
 const lambda = new AWS.Lambda();
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
-const secretsManager = new AWS.SecretsManager();
 
 // Environment variables
 const REQUESTS_TABLE = process.env.REQUESTS_TABLE_NAME || 'StudentQueryRequests';
@@ -30,10 +27,6 @@ const CONVERSATION_TABLE = process.env.CONVERSATION_TABLE_NAME || 'ConversationM
 const LLM_ANALYZER_FUNCTION = process.env.LLM_ANALYZER_FUNCTION || 'student-query-llm-analyzer';
 
 const CONFIG = {
-    dbSecretArn: process.env.DB_SECRET_ARN,
-    dbHost: process.env.DB_HOST,
-    dbName: process.env.DB_NAME,
-    dbPort: process.env.DB_PORT,
     llmAnalyzerFunction: process.env.LLM_ANALYZER_FUNCTION
 };
 
@@ -44,6 +37,7 @@ const CONFIG = {
  * @param {Object} context - Lambda context
  * @returns {Object} - Response to be returned to the frontend or next lambda in chain
  */
+
 exports.handler = async (event, context) => {
     try {
         console.log('Received request:', JSON.stringify(event));
@@ -83,7 +77,6 @@ exports.handler = async (event, context) => {
         // Extract user ID from token
         const userId = tokenValidation.userId;
         const username = tokenValidation.username;
-        const studentId = await getStudentIdFromCognito(userId);
         console.log(`Processing request for user ${userId} with message: ${userMessage}`);
         
         // Ensure user data exists by checking and generating if needed
@@ -106,7 +99,6 @@ exports.handler = async (event, context) => {
         // Forward to LLM Query Analyzer Lambda
         const payload = {
             correlationId,
-            studentId,
             userId,
             message: userMessage
         };
@@ -368,47 +360,4 @@ function formatErrorResponse(statusCode, message) {
             error: message
         })
     };
-}
-
-async function getStudentIdFromCognito(cognitoUserId) {
-    const client = await connectToDatabase();
-    
-    try {
-        const result = await client.query(
-            'SELECT student_id FROM students WHERE cognito_info = $1',
-            [cognitoUserId]
-        );
-        
-        if (result.rows.length > 0) {
-            return result.rows[0].student_id;
-        }
-        
-        return null;
-    } finally {
-        await client.end();
-    }
-}
-
-async function connectToDatabase() {
-    try {
-        const secretResponse = await secretsManager.getSecretValue({
-            SecretId: CONFIG.dbSecretArn
-        }).promise();
-        
-        const password = secretResponse.SecretString;
-        
-        const client = new Client({
-            host: CONFIG.dbHost,
-            database: CONFIG.dbName,
-            user: 'dbadmin',
-            password: password,
-            port: CONFIG.dbPort
-        });
-        
-        await client.connect();
-        return client;
-    } catch (error) {
-        console.error('Error connecting to database:', error);
-        throw new Error(`Database connection error: ${error.message}`);
-    }
 }
