@@ -48,64 +48,13 @@ jobs:
         with:
           node-version: "18"
 
-      - name: Generate package.json for Node.js Lambda - ${{ matrix.function.name }}
-        if: matrix.function.runtime == 'nodejs'
-        run: |
-          cd ${{ matrix.function.directory }}
-          # Create package.json with required dependencies
-          cat > package.json << EOF
-          {
-            "name": "${{ matrix.function.name }}",
-            "version": "1.0.0",
-            "description": "Lambda function for ${{ matrix.function.name }}",
-            "main": "index.js",
-            "dependencies": {
-              "aws-sdk": "^2.1531.0",
-              "pg": "^8.11.3"
-            },
-            "engines": {
-              "node": ">=18.x"
-            },
-            "scripts": {
-              "test": "echo \"Error: no test specified\" && exit 1"
-            },
-            "author": "",
-            "license": "ISC"
-          }
-          EOF
-          echo "Generated package.json:"
-          cat package.json
-
       - name: Build Node.js Lambda package - ${{ matrix.function.name }}
         if: matrix.function.runtime == 'nodejs'
         run: |
           cd ${{ matrix.function.directory }}
-          # Clean any existing node_modules and package-lock.json
-          rm -rf node_modules package-lock.json
-
-          # Install dependencies
           npm install --production
-
-          # Create a clean package directory
-          mkdir -p ./package
-
-          # Copy only necessary files
-          cp index.js ./package/
-          cp -r node_modules ./package/
-          if [ -d "src" ]; then
-            cp -r src ./package/
-          fi
-          if [ -d "utils" ]; then
-            cp -r utils ./package/
-          fi
-
-          # Create zip from package directory
-          cd ./package
-          zip -r ../${{ matrix.function.name }}.zip .
-          cd ..
-
-          # Clean up
-          rm -rf ./package
+          # Create zip in the current directory (not one level up)
+          zip -r ${{ matrix.function.name }}.zip .
 
           # Debug info
           echo "Created zip file at: ${{ matrix.function.directory }}/${{ matrix.function.name }}.zip"
