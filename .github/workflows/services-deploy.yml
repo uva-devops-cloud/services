@@ -53,7 +53,12 @@ jobs:
         run: |
           cd ${{ matrix.function.directory }}
           npm install --production
-          zip -r ../${{ matrix.function.name }}.zip .
+          # Create zip in the current directory (not one level up)
+          zip -r ${{ matrix.function.name }}.zip .
+
+          # Debug info
+          echo "Created zip file at: ${{ matrix.function.directory }}/${{ matrix.function.name }}.zip"
+          ls -la ${{ matrix.function.name }}.zip
 
       # Python Lambda Steps
       - name: Install Python
@@ -74,7 +79,6 @@ jobs:
           else
             echo "No requirements.txt found, creating empty requirements-fixed.txt"
             touch requirements-fixed.txt
-          fi
 
       - name: Build Python Lambda package - ${{ matrix.function.name }}
         if: matrix.function.runtime == 'python'
@@ -94,18 +98,24 @@ jobs:
           # Create the zip package from the package directory
           cd ./package
           zip -r ../${{ matrix.function.name }}.zip .
+          cd ..
 
           # Debug info
           echo "Created zip file at: ${{ matrix.function.directory }}/${{ matrix.function.name }}.zip"
-          cd ..
           ls -la ${{ matrix.function.name }}.zip
 
-      # Common steps for both runtimes
+      # Common upload step for both runtimes
       - name: Upload Lambda package to S3 - ${{ matrix.function.name }}
         run: |
-          echo "Uploading from ${{ matrix.function.directory }}/${{ matrix.function.name }}.zip"
-          # Upload the zip directly from the function directory
-          aws s3 cp ${{ matrix.function.directory }}/${{ matrix.function.name }}.zip s3://lambda-deployments-${{ inputs.aws_account_id }}/functions/${{ matrix.function.name }}.zip
+          # Verify zip file exists before attempting upload
+          if [ -f "${{ matrix.function.directory }}/${{ matrix.function.name }}.zip" ]; then
+            echo "Uploading from ${{ matrix.function.directory }}/${{ matrix.function.name }}.zip"
+            # Upload the zip directly from the function directory
+            aws s3 cp ${{ matrix.function.directory }}/${{ matrix.function.name }}.zip s3://lambda-deployments-${{ inputs.aws_account_id }}/functions/${{ matrix.function.name }}.zip
+          else
+            echo "ERROR: ZIP file not found at ${{ matrix.function.directory }}/${{ matrix.function.name }}.zip"
+            ls -la ${{ matrix.function.directory }}/
+            exit 1
 
       - name: Update Lambda code from S3 - ${{ matrix.function.name }}
         run: |
