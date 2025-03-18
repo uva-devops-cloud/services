@@ -172,7 +172,7 @@ function extractUserMessage(event) {
  * @param {string} authHeader - Authorization header
  * @returns {Object} - Token validation result
  */
-async function validateToken(authHeader) {
+function validateToken(authHeader) {
   try {
     console.log('Manual token validation started');
     
@@ -201,7 +201,7 @@ async function validateToken(authHeader) {
         return { valid: false, message: 'Invalid token format' };
       }
       
-      console.log('Token payload:', JSON.stringify(decodedToken.payload));
+      console.log('Token payload:', JSON.stringify(decodedToken.payload, null, 4));
       console.log('Token scopes:', decodedToken.payload.scope);
       
       // For development, accept any well-formed token
@@ -214,11 +214,11 @@ async function validateToken(authHeader) {
       };
     } catch (decodeError) {
       console.error('Error decoding token:', decodeError);
-      return { valid: false, message: 'Error decoding token', error: decodeError.message };
+      return { valid: false, message: `Error decoding token: ${decodeError.message}` };
     }
   } catch (error) {
     console.error('Error validating token:', error);
-    return { valid: false, message: 'Token validation error', error: error.message };
+    return { valid: false, message: `Token validation error: ${error.message}` };
   }
 }
 
