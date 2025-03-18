@@ -25,7 +25,7 @@ const dynamoDB = new AWS.DynamoDB.DocumentClient();
 // Environment variables
 const REQUESTS_TABLE = process.env.REQUESTS_TABLE_NAME || 'StudentQueryRequests';
 const CONVERSATION_TABLE = process.env.CONVERSATION_TABLE_NAME || 'ConversationMemory';
-const LLM_QUERY_ANALYZER_FUNCTION = process.env.LLM_QUERY_ANALYZER_FUNCTION || 'LLMQueryAnalyzer';
+const LLM_ANALYZER_FUNCTION = process.env.LLM_ANALYZER_FUNCTION || 'student-query-llm-analyzer';
 
 /**
  * Main Lambda handler function
@@ -90,7 +90,7 @@ exports.handler = async (event, context) => {
         
         // Invoke LLM Query Analyzer Lambda
         const analyzerResponse = await lambda.invoke({
-            FunctionName: LLM_QUERY_ANALYZER_FUNCTION,
+            FunctionName: LLM_ANALYZER_FUNCTION,
             InvocationType: 'RequestResponse',
             Payload: JSON.stringify(analyzerPayload)
         }).promise();
