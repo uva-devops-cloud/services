@@ -65,7 +65,7 @@ jobs:
       - name: Create fixed requirements file for Python Lambda - ${{ matrix.function.name }}
         if: matrix.function.runtime == 'python'
         run: |
-          cd ${{ matrix.function.directory }}/python
+          cd ${{ matrix.function.directory }}
           if [ -f "requirements.txt" ]; then
             # Fix dependency conflicts by updating version constraints
             cat requirements.txt | sed 's/langchain-core==0.1.27/langchain-core>=0.1.33,<0.2.0/' > requirements-fixed.txt
@@ -83,25 +83,29 @@ jobs:
           # Create a package directory for Python dependencies
           mkdir -p ./package
           # Install dependencies from fixed requirements file
-          pip install -r python/requirements-fixed.txt -t ./package
+          pip install -r requirements-fixed.txt -t ./package
           # Copy Lambda function code
-          cp python/lambda_function.py ./package/
+          cp lambda_function.py ./package/
           # Copy additional Python files if they exist
-          if [ -d "python/agent" ]; then
+          if [ -d "agent" ]; then
             mkdir -p ./package/agent
-            cp -r python/agent/* ./package/agent/
+            cp -r agent/* ./package/agent/
           fi
           # Create the zip package from the package directory
           cd ./package
-          zip -r ../../${{ matrix.function.name }}.zip .
+          zip -r ../${{ matrix.function.name }}.zip .
+
+          # Debug info
+          echo "Created zip file at: ${{ matrix.function.directory }}/${{ matrix.function.name }}.zip"
+          cd ..
+          ls -la ${{ matrix.function.name }}.zip
 
       # Common steps for both runtimes
       - name: Upload Lambda package to S3 - ${{ matrix.function.name }}
         run: |
-          # Get the parent directory of the function directory
-          PARENT_DIR=$(dirname "${{ matrix.function.directory }}")
-          # Upload the zip to S3
-          aws s3 cp $PARENT_DIR/${{ matrix.function.name }}.zip s3://lambda-deployments-${{ inputs.aws_account_id }}/functions/${{ matrix.function.name }}.zip
+          echo "Uploading from ${{ matrix.function.directory }}/${{ matrix.function.name }}.zip"
+          # Upload the zip directly from the function directory
+          aws s3 cp ${{ matrix.function.directory }}/${{ matrix.function.name }}.zip s3://lambda-deployments-${{ inputs.aws_account_id }}/functions/${{ matrix.function.name }}.zip
 
       - name: Update Lambda code from S3 - ${{ matrix.function.name }}
         run: |
