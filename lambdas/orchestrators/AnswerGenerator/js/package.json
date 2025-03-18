@@ -7,8 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "aws-sdk": "^2.1409.0",
-    "axios": "^1.4.0"
+    "aws-sdk": "^2.1531.0",
+    "axios": "^1.6.7"
   },
   "author": "",
   "license": "ISC"

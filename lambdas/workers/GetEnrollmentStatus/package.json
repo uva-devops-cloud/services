@@ -4,11 +4,11 @@
     "description": "Lambda function to retrieve student enrollment status",
     "main": "index.js",
     "dependencies": {
-        "aws-sdk": "^2.1231.0",
-        "pg": "^8.8.0"
+        "aws-sdk": "^2.1531.0",
+        "pg": "^8.11.3"
     },
     "engines": {
-        "node": ">=14.x"
+        "node": ">=16.x"
     },
     "private": true,
     "author": "",

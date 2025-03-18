@@ -7,9 +7,12 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "aws-sdk": "^2.1033.0",
-    "pg": "^8.7.1",
-    "uuid": "^8.3.2"
+    "aws-sdk": "^2.1531.0",
+    "pg": "^8.11.3",
+    "uuid": "^9.0.1"
+  },
+  "engines": {
+    "node": ">=16.x"
   },
   "author": "",
   "license": "ISC"

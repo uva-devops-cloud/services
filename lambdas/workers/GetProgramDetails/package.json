@@ -4,8 +4,11 @@
   "description": "Lambda function to retrieve program details for students",
   "main": "index.js",
   "dependencies": {
-    "aws-sdk": "^2.1352.0",
-    "pg": "^8.10.0"
+    "aws-sdk": "^2.1531.0",
+    "pg": "^8.11.3"
+  },
+  "engines": {
+    "node": ">=16.x"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

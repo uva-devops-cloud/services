@@ -4,8 +4,8 @@
     "description": "Lambda function to retrieve student data from database",
     "main": "index.js",
     "dependencies": {
-        "pg": "^8.7.1",
-        "aws-sdk": "^2.1048.0"
+        "pg": "^8.11.3",
+        "aws-sdk": "^2.1531.0"
     },
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1"
