@@ -20,17 +20,17 @@ jobs:
       aws_account_id: "474668415523"
       lambda_functions: >-
         [
-          {"name": "get-student-data", "directory": "lambdas/workers/GetStudentData"},
-          {"name": "get-student-courses", "directory": "lambdas/workers/GetStudentCourses"},
-          {"name": "get-program-details", "directory": "lambdas/workers/GetProgramDetails"},
-          {"name": "hello_world", "directory": "lambdas/HelloWorld"},
-          {"name": "student-query-intake", "directory": "lambdas/orchestrators/QueryIntake"},
-          {"name": "student-query-llm-analyzer", "directory": "lambdas/orchestrators/LLMQueryAnalyzer"},
-          {"name": "student-query-worker-dispatcher", "directory": "lambdas/orchestrators/WorkerDispatcher"},
-          {"name": "student-query-response-aggregator", "directory": "lambdas/orchestrators/ResponseAggregator"},
-          {"name": "student-query-answer-generator", "directory": "lambdas/orchestrators/AnswerGenerator"},
-          {"name": "student-query-status", "directory": "lambdas/orchestrators/QueryStatus"},
-          {"name": "student-query-user-data-generator", "directory": "lambdas/orchestrators/UserDataGenerator"}
+            {"name": "get-student-data", "directory": "lambdas/workers/GetStudentData", "runtime": "nodejs"},
+            {"name": "get-student-courses", "directory": "lambdas/workers/GetStudentCourses", "runtime": "nodejs"},
+            {"name": "get-program-details", "directory": "lambdas/workers/GetProgramDetails", "runtime": "nodejs"},
+            {"name": "hello_world", "directory": "lambdas/HelloWorld", "runtime": "nodejs"},
+            {"name": "student-query-intake", "directory": "lambdas/orchestrators/QueryIntake", "runtime": "nodejs"},
+            {"name": "student-query-llm-analyzer", "directory": "lambdas/orchestrators/LLMQueryAnalyzer", "runtime": "python"},
+            {"name": "student-query-worker-dispatcher", "directory": "lambdas/orchestrators/WorkerDispatcher", "runtime": "nodejs"},
+            {"name": "student-query-response-aggregator", "directory": "lambdas/orchestrators/ResponseAggregator", "runtime": "nodejs"},
+            {"name": "student-query-answer-generator", "directory": "lambdas/orchestrators/AnswerGenerator", "runtime": "pythons"},
+            {"name": "student-query-status", "directory": "lambdas/orchestrators/QueryStatus", "runtime": "nodejs"},
+            {"name": "student-query-user-data-generator", "directory": "lambdas/orchestrators/UserDataGenerator", "runtime": "nodejs"}
         ]
 
   deploy-prod:

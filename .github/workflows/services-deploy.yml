@@ -12,7 +12,7 @@ on:
       lambda_functions:
         required: false
         type: string
-        description: 'JSON array of Lambda functions to deploy, e.g. [{"name": "db-migration-runner", "directory": "lambda"}, {"name": "course-details", "directory": "services/CourseDetails"}]'
+        description: 'JSON array of Lambda functions to deploy, e.g. [{"name": "db-migration-runner", "directory": "lambda", "runtime": "nodejs"}]'
         default: "[]"
 
 permissions:
@@ -41,20 +41,67 @@ jobs:
           role-session-name: GitHubLambdaDeploySession
           aws-region: ${{ env.AWS_REGION}}
 
+      # Node.js Lambda Steps
       - name: Install Node.js
+        if: matrix.function.runtime == 'nodejs'
         uses: actions/setup-node@v3
         with:
           node-version: "18"
 
-      - name: Build Lambda package - ${{ matrix.function.name }}
+      - name: Build Node.js Lambda package - ${{ matrix.function.name }}
+        if: matrix.function.runtime == 'nodejs'
         run: |
           cd ${{ matrix.function.directory }}
           npm install --production
           zip -r ../${{ matrix.function.name }}.zip .
 
+      # Python Lambda Steps
+      - name: Install Python
+        if: matrix.function.runtime == 'python'
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Create fixed requirements file for Python Lambda - ${{ matrix.function.name }}
+        if: matrix.function.runtime == 'python'
+        run: |
+          cd ${{ matrix.function.directory }}/python
+          if [ -f "requirements.txt" ]; then
+            # Fix dependency conflicts by updating version constraints
+            cat requirements.txt | sed 's/langchain-core==0.1.27/langchain-core>=0.1.33,<0.2.0/' > requirements-fixed.txt
+            echo "Created fixed requirements file:"
+            cat requirements-fixed.txt
+          else
+            echo "No requirements.txt found, creating empty requirements-fixed.txt"
+            touch requirements-fixed.txt
+          fi
+
+      - name: Build Python Lambda package - ${{ matrix.function.name }}
+        if: matrix.function.runtime == 'python'
+        run: |
+          cd ${{ matrix.function.directory }}
+          # Create a package directory for Python dependencies
+          mkdir -p ./package
+          # Install dependencies from fixed requirements file
+          pip install -r python/requirements-fixed.txt -t ./package
+          # Copy Lambda function code
+          cp python/lambda_function.py ./package/
+          # Copy additional Python files if they exist
+          if [ -d "python/agent" ]; then
+            mkdir -p ./package/agent
+            cp -r python/agent/* ./package/agent/
+          fi
+          # Create the zip package from the package directory
+          cd ./package
+          zip -r ../../${{ matrix.function.name }}.zip .
+
+      # Common steps for both runtimes
       - name: Upload Lambda package to S3 - ${{ matrix.function.name }}
         run: |
-          aws s3 cp $(dirname ${{ matrix.function.directory }})/${{ matrix.function.name }}.zip s3://lambda-deployments-${{ inputs.aws_account_id }}/functions/${{ matrix.function.name }}.zip
+          # Get the parent directory of the function directory
+          PARENT_DIR=$(dirname "${{ matrix.function.directory }}")
+          # Upload the zip to S3
+          aws s3 cp $PARENT_DIR/${{ matrix.function.name }}.zip s3://lambda-deployments-${{ inputs.aws_account_id }}/functions/${{ matrix.function.name }}.zip
 
       - name: Update Lambda code from S3 - ${{ matrix.function.name }}
         run: |
