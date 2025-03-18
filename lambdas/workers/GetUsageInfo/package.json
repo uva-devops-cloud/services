@@ -1,0 +1,18 @@
+{
+    "name": "get-usage-info",
+    "version": "1.0.0",
+    "description": "Lambda function to retrieve and manage student usage information",
+    "main": "index.js",
+    "dependencies": {
+        "aws-sdk": "^2.1231.0",
+        "pg": "^8.8.0"
+    },
+    "engines": {
+        "node": ">=14.x"
+    },
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "author": "",
+    "license": "ISC"
+}

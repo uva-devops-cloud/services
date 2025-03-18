@@ -1,0 +1,16 @@
+{
+    "name": "get-enrollment-status",
+    "version": "1.0.0",
+    "description": "Lambda function to retrieve student enrollment status",
+    "main": "index.js",
+    "dependencies": {
+        "aws-sdk": "^2.1231.0",
+        "pg": "^8.8.0"
+    },
+    "engines": {
+        "node": ">=14.x"
+    },
+    "private": true,
+    "author": "",
+    "license": "UNLICENSED"
+}
