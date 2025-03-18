@@ -9,7 +9,8 @@
   "dependencies": {
     "aws-sdk": "^2.1531.0",
     "jsonwebtoken": "^9.0.2",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "pg": "^8.11.3"
   },
   "engines": {
     "node": ">=16.x"
