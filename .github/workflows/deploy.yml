@@ -28,7 +28,7 @@ jobs:
             {"name": "student-query-llm-analyzer", "directory": "lambdas/orchestrators/LLMQueryAnalyzer", "runtime": "python"},
             {"name": "student-query-worker-dispatcher", "directory": "lambdas/orchestrators/WorkerDispatcher", "runtime": "nodejs"},
             {"name": "student-query-response-aggregator", "directory": "lambdas/orchestrators/ResponseAggregator", "runtime": "nodejs"},
-            {"name": "student-query-answer-generator", "directory": "lambdas/orchestrators/AnswerGenerator", "runtime": "pythons"},
+            {"name": "student-query-answer-generator", "directory": "lambdas/orchestrators/AnswerGenerator", "runtime": "python"},
             {"name": "student-query-status", "directory": "lambdas/orchestrators/QueryStatus", "runtime": "nodejs"},
             {"name": "student-query-user-data-generator", "directory": "lambdas/orchestrators/UserDataGenerator", "runtime": "nodejs"}
         ]
