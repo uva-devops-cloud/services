@@ -46,7 +46,7 @@ If the message is either small talk or out-of-scope, treat it as "small talk" by
 
 If the message might be answered by the worker lambdas or pertains to any academic/student matter (e.g., courses, grades, schedules, enrollment status, graduation requirements, policies, or financial information), set "isSmallTalk" to false and leave the "response" field as an empty string ("").
 
-Your JSON output must be strictly in the following format:
+Your JSON output must be strictly in the following format, consisting of nothing more then the filled in json described below containing these exact fields:
 {
   "isSmallTalk": <true or false>,
   "response": "<string>",
@@ -160,6 +160,8 @@ Example responses:
   "question_type": "requirements",
   "complexity": "complex"
 }
+
+Your response must consisting of nothing more then one filled in json as described below, containing the exact fields as shown in the examples above:
 
 If you are completely confident you can answer without any data retrieval, return an empty requiredWorkers array.
 """
