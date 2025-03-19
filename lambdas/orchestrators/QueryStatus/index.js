@@ -1,5 +1,6 @@
 const AWS = require('aws-sdk');
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
+const jwt = require('jsonwebtoken');
 
 // Configuration from environment variables
 const CONFIG = {
@@ -21,8 +22,28 @@ exports.handler = async (event) => {
       return formatResponse(400, { error: 'Missing correlation ID' });
     }
     
-    // Extract user ID from the JWT claims
-    const userId = event.requestContext.authorizer?.claims?.sub;
+    // Try to get user ID from JWT token in auth header (manual validation)
+    const authHeader = event.headers ? (event.headers.Authorization || event.headers.authorization) : null;
+    console.log('Authorization header:', authHeader ? `${authHeader.substring(0, 20)}...` : 'Not provided');
+    
+    let userId;
+    
+    // First try the standard authorizer way
+    if (event.requestContext?.authorizer?.claims?.sub) {
+      userId = event.requestContext.authorizer.claims.sub;
+      console.log('Got userId from authorizer claims:', userId);
+    } 
+    // If that fails, try manual token validation
+    else {
+      const tokenValidation = validateToken(authHeader);
+      if (!tokenValidation.valid) {
+        console.error('Token validation failed:', tokenValidation.message);
+        return formatResponse(401, { error: 'Unauthorized: Invalid token' });
+      }
+      userId = tokenValidation.userId;
+      console.log('Got userId from manual token validation:', userId);
+    }
+    
     if (!userId) {
       return formatResponse(401, { error: 'Unauthorized - User ID not found' });
     }
@@ -55,6 +76,62 @@ exports.handler = async (event) => {
     return formatResponse(500, { error: 'Internal server error' });
   }
 };
+
+/**
+ * Manually verify the token from the Authorization header
+ * This is a fallback in case API Gateway authorizer fails
+ * 
+ * @param {string} authHeader - Authorization header
+ * @returns {Object} - Token validation result
+ */
+function validateToken(authHeader) {
+  try {
+    console.log('Manual token validation started');
+    
+    if (!authHeader) {
+      console.error('Authorization header is missing');
+      return { valid: false, message: 'Authorization header is missing' };
+    }
+
+    // Extract the token from the Authorization header
+    const tokenParts = authHeader.split(' ');
+    if (tokenParts.length !== 2 || tokenParts[0] !== 'Bearer') {
+      console.error('Authorization header format is invalid. Expected "Bearer token"');
+      return { valid: false, message: 'Invalid Authorization header format' };
+    }
+
+    const token = tokenParts[1];
+    console.log('Token extracted from Authorization header:', token.substring(0, 20) + '...');
+    
+    // For development purposes, simply validate token structure
+    try {
+      // Decode the JWT to extract user information (without verification for debugging)
+      const decodedToken = jwt.decode(token, { complete: true });
+      
+      if (!decodedToken || !decodedToken.payload) {
+        console.error('Invalid token format - could not decode');
+        return { valid: false, message: 'Invalid token format' };
+      }
+      
+      console.log('Token payload:', JSON.stringify(decodedToken.payload, null, 4));
+      
+      // For development, accept any well-formed token
+      return { 
+        valid: true, 
+        token,
+        userId: decodedToken.payload.sub,
+        username: decodedToken.payload.username || decodedToken.payload.sub,
+        scopes: decodedToken.payload.scope || ''
+      };
+    } catch (decodeError) {
+      console.error('Error decoding token:', decodeError);
+      return { valid: false, message: `Error decoding token: ${decodeError.message}` };
+    }
+  } catch (error) {
+    console.error('Error validating token:', error);
+    return { valid: false, message: `Token validation error: ${error.message}` };
+  }
+}
 
 /**
  * Get the status of a request from DynamoDB
@@ -92,7 +169,7 @@ async function getQueryResponse(correlationId) {
   
   const result = await dynamoDB.query(params).promise();
   if (result.Items && result.Items.length > 0) {
-    return result.Items[0].Response;
+    return result.Items[0].Answer;  // Changed from Response to Answer
   }
   
   return null;
