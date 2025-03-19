@@ -118,54 +118,50 @@ exports.handler = async (event) => {
   try {
     logWithTimestamp('Received event: ' + JSON.stringify(event));
     
-    // Check if this is an EventBridge event
-    if (event.source === 'student.query.orchestrator' && 
-        event.detail && 
-        (event.detail.action === 'GetCourseDetails' || event['detail-type'] === 'GetCourseDetails')) {
-      
-      const { courseId, courseCode, correlationId } = event.detail;
-      
-      if (!courseId && !courseCode) {
-        await publishToEventBridge(correlationId, 'GetCourseDetails', {
-          status: 'ERROR',
-          error: 'Either courseId or courseCode must be provided'
-        });
-        return;
-      }
-      
-      // Use course code if provided, otherwise use ID
-      const identifier = courseCode || courseId;
-      const identifierType = courseCode ? 'code' : 'id';
-      
-      // Get course details
-      const courseDetails = await getCourseDetails(identifier, identifierType);
-      
-      if (!courseDetails.found) {
-        await publishToEventBridge(correlationId, 'GetCourseDetails', {
-          status: 'ERROR',
-          error: 'Course not found'
-        });
-        return;
-      }
-      
+    // Extract data from event.detail
+    const { courseId, courseCode, correlationId } = event.detail || {};
+    
+    if (!courseId && !courseCode) {
       await publishToEventBridge(correlationId, 'GetCourseDetails', {
-        status: 'SUCCESS',
-        data: courseDetails.course
-      });
-      
-    } else {
-      await publishToEventBridge(event.detail?.correlationId, 'GetCourseDetails', {
         status: 'ERROR',
-        error: 'Invalid event format'
+        error: 'Either courseId or courseCode must be provided'
       });
+      return;
     }
     
-  } catch (error) {
-    logWithTimestamp(`Error processing request: ${error.message}`);
-    await publishToEventBridge(event.detail?.correlationId, 'GetCourseDetails', {
-      status: 'ERROR',
-      error: 'Internal server error'
+    // Use course code if provided, otherwise use ID
+    const identifier = courseCode || courseId;
+    const identifierType = courseCode ? 'code' : 'id';
+    
+    // Get course details
+    const courseDetails = await getCourseDetails(identifier, identifierType);
+    
+    if (!courseDetails.found) {
+      await publishToEventBridge(correlationId, 'GetCourseDetails', {
+        status: 'ERROR',
+        error: 'Course not found'
+      });
+      return;
+    }
+    
+    // Publish success response
+    await publishToEventBridge(correlationId, 'GetCourseDetails', {
+      status: 'SUCCESS',
+      data: courseDetails.course
     });
+    
+  } catch (error) {
+    logWithTimestamp(`Error in GetCourseDetails: ${error.message}`);
+    
+    // Try to publish error response if possible
+    try {
+      await publishToEventBridge(event.detail?.correlationId, 'GetCourseDetails', {
+        status: 'ERROR',
+        error: `Error getting course details: ${error.message}`
+      });
+    } catch (publishError) {
+      logWithTimestamp(`Failed to publish error response: ${publishError.message}`);
+    }
   }
 };
 
@@ -183,7 +179,7 @@ async function publishToEventBridge(correlationId, workerName, data) {
                 data,
                 timestamp: new Date().toISOString()
             }),
-            EventBusName: 'default',
+            EventBusName: 'main-event-bus',
             Time: new Date()
         }]
     };

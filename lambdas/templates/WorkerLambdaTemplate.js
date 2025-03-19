@@ -21,7 +21,7 @@ const documentClient = new AWS.DynamoDB.DocumentClient();
 
 // Configuration
 const CONFIG = {
-    eventBusName: process.env.EVENT_BUS_NAME || 'default',
+    eventBusName: process.env.EVENT_BUS_NAME || 'main-event-bus',
     requestsTableName: process.env.REQUESTS_TABLE_NAME || 'StudentQueryRequests'
 };
 

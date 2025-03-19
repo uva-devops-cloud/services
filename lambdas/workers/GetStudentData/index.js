@@ -16,19 +16,8 @@ exports.handler = async (event, context) => {
     let client = null;
     
     try {
-        // Verify this is the correct event source and type
-        if (event.source !== 'student.query.orchestrator' || 
-            (event['detail-type'] !== 'GetStudentData' && !event.detail?.action === 'GetStudentData')) {
-            console.log('Not a valid GetStudentData event');
-            await publishToEventBridge(event.detail.correlationId, 'GetStudentData', {
-                error: 'Invalid event format or source',
-                status: 'ERROR'
-            });
-            return;
-        }
-        
-        // Extract studentId from event
-        const { studentId, correlationId } = event.detail;
+        // Extract data from event.detail
+        const { studentId, correlationId } = event.detail || {};
         
         if (!studentId) {
             await publishToEventBridge(correlationId, 'GetStudentData', {
@@ -57,10 +46,15 @@ exports.handler = async (event, context) => {
         
     } catch (error) {
         console.error('Error:', error.message);
-        await publishToEventBridge(event.detail?.correlationId, 'GetStudentData', {
-            error: error.message,
-            status: 'ERROR'
-        });
+        
+        try {
+            await publishToEventBridge(event.detail?.correlationId, 'GetStudentData', {
+                error: error.message,
+                status: 'ERROR'
+            });
+        } catch (publishError) {
+            console.error('Failed to publish error response:', publishError);
+        }
     } finally {
         if (client) {
             try {
@@ -87,7 +81,7 @@ async function publishToEventBridge(correlationId, workerName, data) {
                 data,
                 timestamp: new Date().toISOString()
             }),
-            EventBusName: 'default',
+            EventBusName: 'main-event-bus',
             Time: new Date()
         }]
     };

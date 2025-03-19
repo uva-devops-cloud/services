@@ -120,7 +120,7 @@ async function publishToEventBridge(correlationId, workerName, data) {
                 data,
                 timestamp: new Date().toISOString()
             }),
-            EventBusName: 'default',
+            EventBusName: 'main-event-bus',
             Time: new Date()
         }]
     };
