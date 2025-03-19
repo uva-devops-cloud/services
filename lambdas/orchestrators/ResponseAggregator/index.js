@@ -26,6 +26,21 @@ const CONFIG = {
 };
 
 /**
+ * Structured logging helper
+ */
+function log(level, message, data = {}) {
+    const timestamp = new Date().toISOString();
+    const logEntry = {
+        timestamp,
+        level,
+        component: "ResponseAggregator",
+        message,
+        ...data
+    };
+    console.log(JSON.stringify(logEntry));
+}
+
+/**
  * Main Lambda handler function
  * 
  * @param {Object} event - EventBridge event with worker lambda response
@@ -33,53 +48,141 @@ const CONFIG = {
  * @returns {Object} - Success/failure response
  */
 exports.handler = async (event, context) => {
-    console.log('Received event:', JSON.stringify(event));
+    const startTime = Date.now();
+    log('INFO', '🚀 Response Aggregator invoked', {
+        requestId: context.awsRequestId,
+        remainingTime: context.getRemainingTimeInMillis(),
+        eventSource: event.source,
+        eventDetailType: event['detail-type']
+    });
+    
+    log('DEBUG', '📦 Received event', {
+        event: JSON.stringify(event)
+    });
     
     try {
         // Verify this is a worker response event
         if (!isWorkerResponseEvent(event)) {
-            console.log('Not a worker response event, ignoring');
+            log('INFO', '🚫 Not a worker response event, ignoring', {
+                source: event.source,
+                detailType: event['detail-type']
+            });
             return { statusCode: 200, message: 'Not a worker response event' };
         }
         
         // Extract response data from the event
+        log('INFO', '🔍 Extracting response data from event');
         const { correlationId, workerName, data, timestamp } = extractResponseData(event);
         
+        log('INFO', '✅ Extracted response data', { 
+            correlationId,
+            workerName,
+            timestamp,
+            hasData: !!data
+        });
+        
         if (!correlationId || !workerName || !data) {
+            log('ERROR', '❌ Missing required parameters in worker response', {
+                hasCorrelationId: !!correlationId,
+                hasWorkerName: !!workerName,
+                hasData: !!data
+            });
             throw new Error('Missing required parameters in worker response');
         }
         
         // Store the worker response
+        log('INFO', '💾 Storing worker response in DynamoDB', { 
+            correlationId,
+            workerName,
+            tableName: CONFIG.requestsTableName 
+        });
+        
+        const storeStartTime = Date.now();
         await storeWorkerResponse(correlationId, workerName, data, timestamp);
         
+        log('INFO', '✅ Worker response stored successfully', {
+            correlationId,
+            workerName,
+            duration: `${Date.now() - storeStartTime}ms`
+        });
+        
         // Check if all expected responses have been received
+        log('INFO', '🔄 Checking if request is complete', { correlationId });
+        const checkStartTime = Date.now();
         const isComplete = await checkRequestCompletion(correlationId);
+        
+        log('INFO', `${isComplete ? '✅ Request complete' : '⏳ Request incomplete'}`, {
+            correlationId,
+            isComplete,
+            duration: `${Date.now() - checkStartTime}ms`
+        });
         
         if (isComplete) {
             // Retrieve all response data for this request
+            log('INFO', '📊 Retrieving all responses for completed request', { correlationId });
+            const retrieveStartTime = Date.now();
             const aggregatedData = await retrieveAllResponses(correlationId);
             
+            log('INFO', '✅ Retrieved all responses successfully', {
+                correlationId,
+                responseCount: Object.keys(aggregatedData.responses).length,
+                duration: `${Date.now() - retrieveStartTime}ms`
+            });
+            
             // Forward to Answer Generator lambda
+            log('INFO', '🚀 Forwarding to Answer Generator', { 
+                correlationId, 
+                answerGeneratorFunction: CONFIG.answerGeneratorFunction 
+            });
+            
+            const forwardStartTime = Date.now();
             await forwardToAnswerGenerator(correlationId, aggregatedData);
+            
+            log('INFO', '✅ Successfully forwarded to Answer Generator', {
+                correlationId,
+                duration: `${Date.now() - forwardStartTime}ms`
+            });
+            
+            const totalDuration = Date.now() - startTime;
+            log('INFO', '🏁 Request processing complete', {
+                correlationId,
+                totalDuration: `${totalDuration}ms`
+            });
             
             return { 
                 statusCode: 200, 
                 message: 'Request complete, forwarded to Answer Generator',
-                correlationId
+                correlationId,
+                processingTime: totalDuration
             };
         }
+        
+        const totalDuration = Date.now() - startTime;
+        log('INFO', '⏳ Request still awaiting more responses', {
+            correlationId,
+            totalDuration: `${totalDuration}ms`
+        });
         
         return { 
             statusCode: 200, 
             message: 'Response stored, waiting for additional responses',
-            correlationId
+            correlationId,
+            processingTime: totalDuration
         };
         
     } catch (error) {
-        console.error('Error in Response Aggregator Lambda:', error);
+        const totalDuration = Date.now() - startTime;
+        log('ERROR', '❌ Error in Response Aggregator Lambda', {
+            errorMessage: error.message,
+            errorName: error.name,
+            errorStack: error.stack,
+            totalDuration: `${totalDuration}ms`
+        });
+        
         return {
             statusCode: 500,
-            message: `An error occurred: ${error.message}`
+            message: `An error occurred: ${error.message}`,
+            processingTime: totalDuration
         };
     }
 };
@@ -91,9 +194,25 @@ exports.handler = async (event, context) => {
  * @returns {boolean} - Whether this is a worker response event
  */
 function isWorkerResponseEvent(event) {
-    return event.source === 'student.query.worker' && 
-           event['detail-type'] && 
-           event['detail-type'].endsWith('Response');
+    log('DEBUG', '🔍 Checking if event is a worker response', {
+        source: event.source,
+        detailType: event['detail-type']
+    });
+    
+    const isWorkerEvent = event.source === 'student.query.worker';
+    const hasDetailType = !!event['detail-type'];
+    const isResponseType = hasDetailType && event['detail-type'].endsWith('Response');
+    
+    const result = isWorkerEvent && hasDetailType && isResponseType;
+    
+    log('DEBUG', result ? '✅ Event is a worker response' : '❌ Event is not a worker response', {
+        isWorkerEvent,
+        hasDetailType,
+        isResponseType,
+        result
+    });
+    
+    return result;
 }
 
 /**
@@ -103,8 +222,43 @@ function isWorkerResponseEvent(event) {
  * @returns {Object} - Extracted correlation ID, worker name, data, and timestamp
  */
 function extractResponseData(event) {
-    const detail = JSON.parse(event.detail || '{}');
+    log('DEBUG', '🔄 Extracting data from event', {
+        detailType: event['detail-type'],
+        detailFormat: typeof event.detail
+    });
+    
+    // Handle both cases: when detail is a string or already an object
+    let detail;
+    
+    if (typeof event.detail === 'string') {
+        log('DEBUG', '🔄 Event detail is a string, attempting to parse');
+        try {
+            detail = JSON.parse(event.detail || '{}');
+            log('DEBUG', '✅ Successfully parsed detail string to object');
+        } catch (e) {
+            log('ERROR', '❌ Error parsing event.detail string', {
+                error: e.message,
+                detail: event.detail ? event.detail.substring(0, 100) + '...' : 'empty'
+            });
+            detail = {};
+        }
+    } else {
+        log('DEBUG', '✅ Event detail is already an object');
+        detail = event.detail || {};
+    }
+    
+    // Get the worker name by removing 'Response' suffix
     const workerName = event['detail-type'].replace('Response', '');
+    
+    log('DEBUG', '🔍 Extracted detail object', {
+        workerName,
+        hasCorrelationId: !!detail.correlationId,
+        hasData: !!detail.data
+    });
+    
+    log('DEBUG', '📦 Detail contents', {
+        detail: JSON.stringify(detail)
+    });
     
     return {
         correlationId: detail.correlationId,
@@ -124,6 +278,13 @@ function extractResponseData(event) {
  * @returns {Promise} - Promise resolving to DynamoDB update response
  */
 async function storeWorkerResponse(correlationId, workerName, data, timestamp) {
+    log('DEBUG', '💾 Preparing DynamoDB update operation', {
+        correlationId,
+        workerName,
+        tableName: CONFIG.requestsTableName,
+        timestamp
+    });
+    
     const params = {
         TableName: CONFIG.requestsTableName,
         Key: { CorrelationId: correlationId },
@@ -142,7 +303,27 @@ async function storeWorkerResponse(correlationId, workerName, data, timestamp) {
         ReturnValues: 'UPDATED_NEW'
     };
     
-    return dynamoDB.update(params).promise();
+    log('DEBUG', '🔄 Executing DynamoDB update operation', { 
+        correlationId,
+        expression: params.UpdateExpression
+    });
+    
+    try {
+        const result = await dynamoDB.update(params).promise();
+        log('DEBUG', '✅ DynamoDB update successful', {
+            correlationId,
+            updatedAttributes: Object.keys(result.Attributes || {}).join(', ')
+        });
+        return result;
+    } catch (error) {
+        log('ERROR', '❌ DynamoDB update failed', {
+            correlationId,
+            errorMessage: error.message,
+            errorCode: error.code,
+            tableName: CONFIG.requestsTableName
+        });
+        throw error;
+    }
 }
 
 /**
@@ -152,39 +333,77 @@ async function storeWorkerResponse(correlationId, workerName, data, timestamp) {
  * @returns {boolean} - Whether all expected responses have been received
  */
 async function checkRequestCompletion(correlationId) {
+    log('DEBUG', '🔍 Checking request completion status', { correlationId });
+    
     const params = {
         TableName: CONFIG.requestsTableName,
         Key: { CorrelationId: correlationId }
     };
     
-    const result = await dynamoDB.get(params).promise();
-    
-    if (!result.Item) {
-        throw new Error(`Request with correlation ID ${correlationId} not found`);
-    }
-    
-    const request = result.Item;
-    const requiredSources = request.RequiredSources || [];
-    const receivedResponses = request.ReceivedResponses || [];
-    const receivedWorkers = new Set(receivedResponses.map(r => r.WorkerName));
-    
-    // Check if all required sources have responded
-    const isComplete = requiredSources.every(source => receivedWorkers.has(source));
-    
-    if (isComplete && !request.IsComplete) {
-        // Update the request status to complete
-        await dynamoDB.update({
-            TableName: CONFIG.requestsTableName,
-            Key: { CorrelationId: correlationId },
-            UpdateExpression: 'SET IsComplete = :complete, Status = :status',
-            ExpressionAttributeValues: {
-                ':complete': true,
-                ':status': 'COMPLETE'
+    try {
+        log('DEBUG', '🔄 Fetching request data from DynamoDB', { correlationId });
+        const result = await dynamoDB.get(params).promise();
+        
+        if (!result.Item) {
+            log('ERROR', '❌ Request not found in DynamoDB', { correlationId });
+            throw new Error(`Request with correlation ID ${correlationId} not found`);
+        }
+        
+        const request = result.Item;
+        const requiredSources = request.RequiredSources || [];
+        const receivedResponses = request.ReceivedResponses || [];
+        const receivedWorkers = new Set(receivedResponses.map(r => r.WorkerName));
+        
+        log('DEBUG', '🔢 Comparing required sources vs received responses', {
+            correlationId,
+            requiredSources: requiredSources.join(', '),
+            receivedWorkers: Array.from(receivedWorkers).join(', '),
+            requiredCount: requiredSources.length,
+            receivedCount: receivedWorkers.size
+        });
+        
+        // Check if all required sources have responded
+        const isComplete = requiredSources.every(source => receivedWorkers.has(source));
+        
+        log('DEBUG', isComplete ? '✅ All required responses received' : '⏳ Still waiting for some responses', {
+            correlationId,
+            isComplete
+        });
+        
+        if (isComplete && !request.IsComplete) {
+            // Update the request status to complete
+            log('INFO', '🔄 Updating request status to complete', { correlationId });
+            
+            try {
+                await dynamoDB.update({
+                    TableName: CONFIG.requestsTableName,
+                    Key: { CorrelationId: correlationId },
+                    UpdateExpression: 'SET IsComplete = :complete, Status = :status',
+                    ExpressionAttributeValues: {
+                        ':complete': true,
+                        ':status': 'COMPLETE'
+                    }
+                }).promise();
+                
+                log('INFO', '✅ Request status updated to complete', { correlationId });
+            } catch (updateError) {
+                log('ERROR', '❌ Failed to update request status', {
+                    correlationId,
+                    errorMessage: updateError.message
+                });
+                // Don't throw error here, we still want to proceed with the completion logic
             }
-        }).promise();
+        }
+        
+        return isComplete;
+    } catch (error) {
+        log('ERROR', '❌ Error checking request completion', {
+            correlationId,
+            errorMessage: error.message,
+            errorCode: error.code
+        });
+        throw error;
     }
-    
-    return isComplete;
 }
 
 /**
@@ -194,29 +413,61 @@ async function checkRequestCompletion(correlationId) {
  * @returns {Object} - Original request and all responses
  */
 async function retrieveAllResponses(correlationId) {
+    log('DEBUG', '🔍 Retrieving all responses for request', { correlationId });
+    
     const params = {
         TableName: CONFIG.requestsTableName,
         Key: { CorrelationId: correlationId }
     };
     
-    const result = await dynamoDB.get(params).promise();
-    
-    if (!result.Item) {
-        throw new Error(`Request with correlation ID ${correlationId} not found`);
+    try {
+        const result = await dynamoDB.get(params).promise();
+        
+        if (!result.Item) {
+            log('ERROR', '❌ Request not found in DynamoDB during response retrieval', { correlationId });
+            throw new Error(`Request with correlation ID ${correlationId} not found`);
+        }
+        
+        log('DEBUG', '✅ Retrieved request data from DynamoDB', {
+            correlationId,
+            userId: result.Item.UserId,
+            responseCount: (result.Item.ReceivedResponses || []).length
+        });
+        
+        // Transform responses into a more usable format
+        log('DEBUG', '🔄 Transforming response data to aggregated format', { correlationId });
+        const transformedResponses = {};
+        result.Item.ReceivedResponses.forEach(response => {
+            transformedResponses[response.WorkerName] = response.Data;
+            log('DEBUG', `📊 Mapped response for ${response.WorkerName}`, {
+                correlationId,
+                workerName: response.WorkerName,
+                timestamp: response.Timestamp,
+                dataSize: JSON.stringify(response.Data).length
+            });
+        });
+        
+        const aggregatedData = {
+            correlationId,
+            userId: result.Item.UserId,
+            message: result.Item.Message,
+            responses: transformedResponses
+        };
+        
+        log('DEBUG', '✅ Response data aggregation complete', {
+            correlationId,
+            responseCount: Object.keys(transformedResponses).length
+        });
+        
+        return aggregatedData;
+    } catch (error) {
+        log('ERROR', '❌ Error retrieving all responses', {
+            correlationId,
+            errorMessage: error.message,
+            errorCode: error.code
+        });
+        throw error;
     }
-    
-    // Transform responses into a more usable format
-    const transformedResponses = {};
-    result.Item.ReceivedResponses.forEach(response => {
-        transformedResponses[response.WorkerName] = response.Data;
-    });
-    
-    return {
-        correlationId,
-        userId: result.Item.UserId,
-        message: result.Item.Message,
-        responses: transformedResponses
-    };
 }
 
 /**
@@ -227,11 +478,40 @@ async function retrieveAllResponses(correlationId) {
  * @returns {Promise} - Promise resolving to Lambda invoke response
  */
 async function forwardToAnswerGenerator(correlationId, aggregatedData) {
+    log('DEBUG', '🚀 Preparing to invoke Answer Generator', {
+        correlationId,
+        functionName: CONFIG.answerGeneratorFunction
+    });
+    
     const params = {
         FunctionName: CONFIG.answerGeneratorFunction,
         InvocationType: 'Event', // Asynchronous invocation
         Payload: JSON.stringify(aggregatedData)
     };
     
-    return lambda.invoke(params).promise();
+    log('DEBUG', '📦 Payload prepared for Answer Generator', {
+        correlationId,
+        payloadSize: JSON.stringify(aggregatedData).length,
+        responseCount: Object.keys(aggregatedData.responses || {}).length
+    });
+    
+    try {
+        const result = await lambda.invoke(params).promise();
+        
+        log('INFO', '✅ Answer Generator Lambda invoked successfully', {
+            correlationId,
+            statusCode: result.StatusCode,
+            requestId: result.ResponseMetadata ? result.ResponseMetadata.RequestId : 'unknown'
+        });
+        
+        return result;
+    } catch (error) {
+        log('ERROR', '❌ Error invoking Answer Generator Lambda', {
+            correlationId,
+            errorMessage: error.message,
+            errorCode: error.code,
+            functionName: CONFIG.answerGeneratorFunction
+        });
+        throw error;
+    }
 }
