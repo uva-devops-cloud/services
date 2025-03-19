@@ -179,59 +179,42 @@ async function getRequestStatus(correlationId, userId) {
  * Get the response data for a completed query
  */
 async function getQueryResponse(correlationId) {
-  // Try a direct get first, assuming CorrelationId is the primary key
   try {
-    const getParams = {
-      TableName: CONFIG.responsesTableName,
-      Key: { CorrelationId: correlationId }
-    };
+    console.log('Getting query response for correlationId:', correlationId);
+    console.log('Using responses table:', CONFIG.responsesTableName);
     
-    const getResult = await dynamoDB.get(getParams).promise();
-    if (getResult.Item) {
-      console.log('Found response using get operation:', JSON.stringify(getResult.Item));
-      return getResult.Item.Answer;
-    }
-    
-    // If get doesn't work, fall back to query (in case it's a GSI or LSI)
-    console.log('No response found with get, trying query');
+    // StudentQueryResponses has a composite key with CorrelationId as hash key and Timestamp as range key
+    // We need to use query operation rather than get
     const queryParams = {
       TableName: CONFIG.responsesTableName,
       KeyConditionExpression: 'CorrelationId = :cid',
       ExpressionAttributeValues: {
         ':cid': correlationId
       },
-      ScanIndexForward: false, // Get the most recent response first
-      Limit: 1
+      ScanIndexForward: false, // Get the most recent response first (descending timestamp)
+      Limit: 1 // We just need the latest one
     };
     
+    console.log('Query params:', JSON.stringify(queryParams));
+    
+    // Execute the query
     const queryResult = await dynamoDB.query(queryParams).promise();
     console.log('Query result:', JSON.stringify(queryResult));
     
     if (queryResult.Items && queryResult.Items.length > 0) {
-      console.log('Found response using query:', JSON.stringify(queryResult.Items[0]));
-      return queryResult.Items[0].Answer;
+      const latestItem = queryResult.Items[0];
+      console.log('Found latest response:', JSON.stringify(latestItem));
+      
+      // Check if the Answer field exists
+      if (latestItem.Answer) {
+        return latestItem.Answer;
+      }
+      
+      console.log('No Answer field found in response item');
+      return null;
     }
     
-    // Last resort - scan the table (inefficient but will find the item)
-    console.log('No response found with query, trying scan (last resort)');
-    const scanParams = {
-      TableName: CONFIG.responsesTableName,
-      FilterExpression: 'CorrelationId = :cid',
-      ExpressionAttributeValues: {
-        ':cid': correlationId
-      },
-      Limit: 1
-    };
-    
-    const scanResult = await dynamoDB.scan(scanParams).promise();
-    console.log('Scan result:', JSON.stringify(scanResult));
-    
-    if (scanResult.Items && scanResult.Items.length > 0) {
-      console.log('Found response using scan:', JSON.stringify(scanResult.Items[0]));
-      return scanResult.Items[0].Answer;
-    }
-    
-    console.log('No response found for correlationId:', correlationId);
+    console.log('No responses found for correlationId:', correlationId);
     return null;
   } catch (error) {
     console.error('Error retrieving response:', error);
