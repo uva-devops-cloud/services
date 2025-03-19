@@ -15,6 +15,10 @@ const CONFIG = {
 exports.handler = async (event) => {
   try {
     console.log('Event received:', JSON.stringify(event));
+    console.log('Environment variables:', {
+      requestsTableName: process.env.REQUESTS_TABLE_NAME,
+      responsesTableName: process.env.RESPONSES_TABLE_NAME
+    });
     
     // Extract the correlation ID from the path parameters
     const correlationId = event.pathParameters?.correlationId;
@@ -137,42 +141,102 @@ function validateToken(authHeader) {
  * Get the status of a request from DynamoDB
  */
 async function getRequestStatus(correlationId, userId) {
-  const params = {
-    TableName: CONFIG.requestsTableName,
-    Key: { CorrelationId: correlationId }
-  };
-  
-  const result = await dynamoDB.get(params).promise();
-  const item = result.Item;
-  
-  // Verify the user has access to this query
-  if (!item || item.UserId !== userId) {
-    return null;
+  try {
+    console.log(`Getting request status for correlationId: ${correlationId}, userId: ${userId}`);
+    
+    const params = {
+      TableName: CONFIG.requestsTableName,
+      Key: { CorrelationId: correlationId }
+    };
+    
+    console.log('DynamoDB params:', JSON.stringify(params));
+    
+    const result = await dynamoDB.get(params).promise();
+    console.log('DynamoDB result:', JSON.stringify(result));
+    
+    const item = result.Item;
+    
+    // Verify the user has access to this query
+    if (!item) {
+      console.log(`No item found for correlationId: ${correlationId}`);
+      return null;
+    }
+    
+    if (item.UserId !== userId) {
+      console.log(`UserId mismatch: token userId: ${userId}, item userId: ${item.UserId}`);
+      return null;
+    }
+    
+    console.log(`Request status found: ${item.Status}`);
+    return item;
+  } catch (error) {
+    console.error('Error getting request status:', error);
+    throw error;
   }
-  
-  return item;
 }
 
 /**
  * Get the response data for a completed query
  */
 async function getQueryResponse(correlationId) {
-  const params = {
-    TableName: CONFIG.responsesTableName,
-    KeyConditionExpression: 'CorrelationId = :cid',
-    ExpressionAttributeValues: {
-      ':cid': correlationId
-    },
-    ScanIndexForward: false, // Get the most recent response first
-    Limit: 1
-  };
-  
-  const result = await dynamoDB.query(params).promise();
-  if (result.Items && result.Items.length > 0) {
-    return result.Items[0].Answer;  // Changed from Response to Answer
+  // Try a direct get first, assuming CorrelationId is the primary key
+  try {
+    const getParams = {
+      TableName: CONFIG.responsesTableName,
+      Key: { CorrelationId: correlationId }
+    };
+    
+    const getResult = await dynamoDB.get(getParams).promise();
+    if (getResult.Item) {
+      console.log('Found response using get operation:', JSON.stringify(getResult.Item));
+      return getResult.Item.Answer;
+    }
+    
+    // If get doesn't work, fall back to query (in case it's a GSI or LSI)
+    console.log('No response found with get, trying query');
+    const queryParams = {
+      TableName: CONFIG.responsesTableName,
+      KeyConditionExpression: 'CorrelationId = :cid',
+      ExpressionAttributeValues: {
+        ':cid': correlationId
+      },
+      ScanIndexForward: false, // Get the most recent response first
+      Limit: 1
+    };
+    
+    const queryResult = await dynamoDB.query(queryParams).promise();
+    console.log('Query result:', JSON.stringify(queryResult));
+    
+    if (queryResult.Items && queryResult.Items.length > 0) {
+      console.log('Found response using query:', JSON.stringify(queryResult.Items[0]));
+      return queryResult.Items[0].Answer;
+    }
+    
+    // Last resort - scan the table (inefficient but will find the item)
+    console.log('No response found with query, trying scan (last resort)');
+    const scanParams = {
+      TableName: CONFIG.responsesTableName,
+      FilterExpression: 'CorrelationId = :cid',
+      ExpressionAttributeValues: {
+        ':cid': correlationId
+      },
+      Limit: 1
+    };
+    
+    const scanResult = await dynamoDB.scan(scanParams).promise();
+    console.log('Scan result:', JSON.stringify(scanResult));
+    
+    if (scanResult.Items && scanResult.Items.length > 0) {
+      console.log('Found response using scan:', JSON.stringify(scanResult.Items[0]));
+      return scanResult.Items[0].Answer;
+    }
+    
+    console.log('No response found for correlationId:', correlationId);
+    return null;
+  } catch (error) {
+    console.error('Error retrieving response:', error);
+    return null;
   }
-  
-  return null;
 }
 
 /**

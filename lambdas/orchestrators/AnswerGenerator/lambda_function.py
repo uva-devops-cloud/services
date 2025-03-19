@@ -334,8 +334,11 @@ def store_response(correlation_id: str, user_id: str, question: str, answer: str
             'Status': 'complete'
         }
         
+        logger.info(f"Storing response in table: {CONFIG['responses_table_name']}")
+        logger.info(f"Item to store: {json.dumps(item)}")
+        
         table.put_item(Item=item)
-        logger.info(f"Stored response for correlation ID {correlation_id}")
+        logger.info(f"Successfully stored response for correlation ID {correlation_id}")
         
     except Exception as e:
         logger.error(f"Error storing response: {str(e)}", exc_info=True)
