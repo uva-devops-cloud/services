@@ -90,6 +90,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Store the final answer in DynamoDB
         store_response(correlation_id, user_id, message, final_answer)
         
+        # Update the request status to complete
+        update_request_status(correlation_id, 'complete')
+        
         # Store conversation history
         store_conversation_history(user_id, correlation_id, message, final_answer)
         
@@ -376,3 +379,79 @@ def store_conversation_history(user_id: str, correlation_id: str, question: str,
     except Exception as e:
         logger.error(f"Error storing conversation history: {str(e)}")
         raise e  # Re-raise to be caught by the caller
+
+
+def update_request_status(correlation_id: str, status: str) -> None:
+    """
+    Update the status of a request in the requests table
+    
+    Args:
+        correlation_id: Correlation ID for the request
+        status: New status to set (e.g., 'complete', 'error')
+    """
+    try:
+        table = dynamodb.Table(CONFIG['requests_table_name'])
+        
+        logger.info(f"Attempting to update status to '{status}' for correlation ID: {correlation_id}")
+        logger.info(f"Using requests table: {CONFIG['requests_table_name']}")
+        
+        # Try direct update first for simplicity
+        try:
+            # Update the status with a simple update_item call
+            update_response = table.update_item(
+                Key={
+                    'CorrelationId': correlation_id
+                },
+                UpdateExpression="SET #status = :status, UpdatedAt = :updated_at",
+                ExpressionAttributeNames={
+                    '#status': 'Status'
+                },
+                ExpressionAttributeValues={
+                    ':status': status,
+                    ':updated_at': datetime.now().isoformat()
+                },
+                ReturnValues="UPDATED_NEW"
+            )
+            
+            logger.info(f"Successfully updated request status to '{status}' for correlation ID: {correlation_id}")
+            logger.info(f"Update response: {json.dumps(update_response)}")
+            return
+        except Exception as update_error:
+            logger.error(f"Error with simple update: {str(update_error)}")
+            # Fall through to the more complex approach
+        
+        # More robust approach - get then put
+        logger.info("Trying get-then-put approach...")
+        response = table.get_item(
+            Key={
+                'CorrelationId': correlation_id
+            }
+        )
+        
+        if 'Item' not in response:
+            logger.error(f"No request found with correlation ID: {correlation_id}")
+            
+            # As a last resort, try to create a new item
+            logger.info("Trying to create a new item as last resort...")
+            item = {
+                'CorrelationId': correlation_id,
+                'Status': status,
+                'CreatedAt': datetime.now().isoformat(),
+                'UpdatedAt': datetime.now().isoformat()
+            }
+            
+            table.put_item(Item=item)
+            logger.info(f"Created new request item with status '{status}' for correlation ID: {correlation_id}")
+            return
+        
+        # Update the existing item
+        item = response['Item']
+        item['Status'] = status
+        item['UpdatedAt'] = datetime.now().isoformat()
+        
+        table.put_item(Item=item)
+        logger.info(f"Updated request item with status '{status}' for correlation ID: {correlation_id}")
+        
+    except Exception as e:
+        logger.error(f"Error updating request status: {str(e)}", exc_info=True)
+        # Continue despite errors

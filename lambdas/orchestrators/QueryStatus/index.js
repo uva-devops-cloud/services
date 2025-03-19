@@ -58,10 +58,31 @@ exports.handler = async (event) => {
       return formatResponse(404, { error: 'Query not found or not authorized' });
     }
     
+    console.log('Full request status object:', JSON.stringify(requestStatus));
+    console.log('Status field value:', requestStatus.Status);
+    
     // Get the response data if available
     let responseData = null;
-    if (requestStatus.Status === 'complete') {
+    
+    // Check all possible status field names just in case
+    if (requestStatus.Status === 'complete' || 
+        requestStatus.status === 'complete' ||
+        requestStatus.Status === 'COMPLETED' ||
+        requestStatus.status === 'COMPLETED') {
+      console.log('Status is complete, getting response data');
       responseData = await getQueryResponse(correlationId);
+    } else {
+      console.log('Status is not complete:', requestStatus.Status || requestStatus.status);
+      
+      // Try to get response data anyway - it might exist even if status isn't updated
+      console.log('Checking for response data regardless of status');
+      responseData = await getQueryResponse(correlationId);
+      
+      if (responseData) {
+        console.log('Found response data even though status is not complete');
+        // If we have response data but status isn't complete, update our local status
+        requestStatus.Status = 'complete';
+      }
     }
     
     // Format the response
