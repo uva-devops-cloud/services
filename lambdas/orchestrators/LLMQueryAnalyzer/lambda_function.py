@@ -172,7 +172,6 @@ stick to general academic knowledge and avoid making up specific policies.
 """
 
 
-
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Main Lambda handler function. Analyzes student queries using LLM and determines 

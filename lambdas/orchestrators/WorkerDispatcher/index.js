@@ -138,25 +138,25 @@ exports.handler = async (event, context) => {
             tableName: CONFIG.requestsTableName 
         });
         
-        const dynamoStartTime = Date.now();
-        try {
-            await storeRequestMetadata(correlationId, userId, studentId, originalMessage, requiredData);
-            const dynamoDuration = Date.now() - dynamoStartTime;
-            logWithTime('INFO', '✅ Request metadata stored successfully', { 
-                correlationId, 
-                duration: `${dynamoDuration}ms` 
-            });
-        } catch (dynamoError) {
-            logWithTime('ERROR', '❌ Failed to store request metadata', {
-                correlationId,
-                errorType: dynamoError.constructor.name,
-                errorMessage: dynamoError.message,
-                errorStack: dynamoError.stack,
-                duration: `${Date.now() - dynamoStartTime}ms`
-            });
+        // const dynamoStartTime = Date.now();
+        // try {
+        //     await storeRequestMetadata(correlationId, userId, studentId, originalMessage, requiredData);
+        //     const dynamoDuration = Date.now() - dynamoStartTime;
+        //     logWithTime('INFO', '✅ Request metadata stored successfully', { 
+        //         correlationId, 
+        //         duration: `${dynamoDuration}ms` 
+        //     });
+        // } catch (dynamoError) {
+        //     logWithTime('ERROR', '❌ Failed to store request metadata', {
+        //         correlationId,
+        //         errorType: dynamoError.constructor.name,
+        //         errorMessage: dynamoError.message,
+        //         errorStack: dynamoError.stack,
+        //         duration: `${Date.now() - dynamoStartTime}ms`
+        //     });
             
-            throw dynamoError; // Re-throw to be caught by main try/catch
-        }
+        //     throw dynamoError; // Re-throw to be caught by main try/catch
+        // }
         
         // Dispatch events to worker lambdas
         logWithTime('INFO', '📡 Dispatching events to workers', { 
