@@ -436,7 +436,7 @@ def analyze_query(message: str, conversation_history: List[Dict]) -> Dict:
         llm = get_llm_client()
         
         # Format recent conversation history
-        recent_history = format_conversation_history_for_prompt(conversation_history, limit=3)
+        recent_history = None #TEMP format_conversation_history_for_prompt(conversation_history, limit=3)
         
         # Build the prompt
         messages = [
