@@ -326,12 +326,12 @@ def store_response(correlation_id: str, user_id: str, question: str, answer: str
         timestamp = datetime.now().isoformat()
         
         item = {
-            'correlation_id': correlation_id,
-            'user_id': user_id,
-            'timestamp': timestamp,
-            'question': question,
-            'answer': answer,
-            'status': 'complete'
+            'CorrelationId': correlation_id,
+            'UserId': user_id,
+            'Timestamp': timestamp,
+            'Question': question,
+            'Answer': answer,
+            'Status': 'complete'
         }
         
         table.put_item(Item=item)
