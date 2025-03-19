@@ -114,7 +114,7 @@ Analyze the user's query and output a JSON object with the following fields:
   * "GetStudentCourses" - All courses a student is enrolled in (with grades and status)
   * "GetProgramDetails" - Program information (name, director)
   * "GetProgramCourses" - All courses required for a program
-  * "GetEnrollmentInfo" - Student's program enrollment details (status, GPA)
+  * "GetEnrollmentStatus" - Student's program enrollment details (status, GPA)
   * "GetUsageInfo" - LLM credits usage information
 - "parameters": key parameters needed for the workers (student_id, program_id, etc.)
 - "question_type": classification of question ("status", "performance", "requirements", "schedule")
