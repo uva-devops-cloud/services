@@ -158,24 +158,27 @@ def get_api_key_from_secrets() -> str:
         raise e
 
 
-def format_data_for_llm(original_message: str, responses: List[Dict[str, Any]]) -> Dict[str, Any]:
+def format_data_for_llm(original_message: str, responses: Dict[str, Any]) -> Dict[str, Any]:
     """
     Format aggregated data for the LLM
     
     Args:
         original_message: Original student question
-        responses: Responses from worker lambdas
+        responses: Dictionary of responses from worker lambdas
         
     Returns:
         Formatted data for LLM
     """
+    logger.info(f"Formatting data with responses type: {type(responses)}")
     formatted_data = {}
     
-    # Group responses by source
-    for response in responses:
-        source = response.get('Source', 'Unknown')
-        data = response.get('Data', {})
-        formatted_data[source] = data
+    # Responses is already a dictionary with source names as keys
+    for source_name, response_obj in responses.items():
+        logger.info(f"Processing response from {source_name}")
+        # Extract data - note the lowercase 'data' key
+        data = response_obj.get('data', {})
+        formatted_data[source_name] = data
+        logger.info(f"Added data from {source_name}, keys: {list(data.keys()) if isinstance(data, dict) else 'list data'}")
     
     return formatted_data
 
