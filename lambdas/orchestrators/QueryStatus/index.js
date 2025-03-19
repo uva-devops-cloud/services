@@ -56,14 +56,14 @@ exports.handler = async (event) => {
     
     // Get the response data if available
     let responseData = null;
-    if (requestStatus.Status === 'COMPLETED') {
+    if (requestStatus.Status === 'complete') {
       responseData = await getQueryResponse(correlationId);
     }
     
     // Format the response
     const response = {
       correlationId: correlationId,
-      status: requestStatus.Status,
+      status: mapStatusForFrontend(requestStatus.Status),
       createdAt: requestStatus.CreatedAt,
       updatedAt: requestStatus.UpdatedAt,
       query: requestStatus.Query,
@@ -188,4 +188,18 @@ function formatResponse(statusCode, body) {
     },
     body: JSON.stringify(body)
   };
+}
+
+/**
+ * Map the database status to the format expected by the frontend
+ */
+function mapStatusForFrontend(dbStatus) {
+  const statusMap = {
+    'complete': 'COMPLETED',
+    'processing': 'PROCESSING',
+    'pending': 'PENDING',
+    'error': 'ERROR'
+  };
+  
+  return statusMap[dbStatus] || dbStatus.toUpperCase();
 }

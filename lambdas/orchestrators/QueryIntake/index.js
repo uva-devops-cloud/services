@@ -136,7 +136,7 @@ exports.handler = async (event, context) => {
             correlationId,
             message: responseBody.message,
             requiresWorkers: responseBody.requiresWorkers,
-            status: 'success'
+            status: 'PENDING'
         });
         
     } catch (error) {
@@ -289,7 +289,7 @@ async function storeInitialRequest(correlationId, userId, message) {
             Timestamp: timestamp,
             UserId: userId,
             Message: message,
-            Status: 'processing',
+            Status: 'PROCESSING',
             TTL: ttl
         }
     };
@@ -318,6 +318,7 @@ async function storeDirectResponse(correlationId, userId, question, answer) {
             UserId: userId,
             Question: question,
             Answer: answer,
+            Status: 'COMPLETED',
             TTL: ttl
         }
     };
