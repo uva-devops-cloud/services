@@ -2,7 +2,7 @@ import os
 import json
 import boto3
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -282,11 +282,12 @@ def get_conversation_history(user_id: str, limit: int = 5) -> List[Dict[str, str
         
         # Query for this user's conversations, sorted by timestamp
         response = table.query(
-            KeyConditionExpression="user_id = :uid",
+            IndexName="UserConversationsIndex",
+            KeyConditionExpression="UserId = :uid",
             ExpressionAttributeValues={
                 ":uid": user_id
             },
-            ScanIndexForward=True,  # Sort ascending by sort key (timestamp)
+            ScanIndexForward=False,  # Sort descending by ExpirationTime (newest first)
             Limit=limit
         )
         
@@ -352,11 +353,13 @@ def store_conversation_history(user_id: str, correlation_id: str, question: str,
         table = dynamodb.Table(CONFIG['conversation_table_name'])
         
         timestamp = datetime.now().isoformat()
+        expiration_time = int((datetime.now() + timedelta(minutes=15)).timestamp())
         
         item = {
-            'user_id': user_id,
+            'UserId': user_id,  # Correct casing for hash key
+            'CorrelationId': correlation_id,  # Correct casing for range key
             'timestamp': timestamp,
-            'correlation_id': correlation_id,
+            'ExpirationTime': expiration_time,  # Added TTL field
             'question': question,
             'answer': answer
         }
@@ -365,5 +368,5 @@ def store_conversation_history(user_id: str, correlation_id: str, question: str,
         logger.info(f"Stored conversation history for user {user_id}")
         
     except Exception as e:
-        logger.error(f"Error storing conversation history: {str(e)}", exc_info=True)
+        logger.error(f"Error storing conversation history: {str(e)}")
         raise e  # Re-raise to be caught by the caller

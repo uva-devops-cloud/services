@@ -552,7 +552,7 @@ def get_conversation_history(user_id: str) -> List[Dict]:
     try:
         table = dynamodb.Table(CONFIG['conversation_table_name'])
         
-        # Query using the correct key schema (UserId as hash key)
+        # Query using the GSI for time-based sorting
         response = table.query(
             KeyConditionExpression='UserId = :uid',
             ExpressionAttributeValues={
@@ -592,11 +592,13 @@ def store_conversation_history(user_id: str, correlation_id: str, question: str,
         table = dynamodb.Table(CONFIG['conversation_table_name'])
         
         timestamp = datetime.now().isoformat()
+        expiration_time = int((datetime.now() + timedelta(minutes=15)).timestamp())
         
         item = {
-            'user_id': user_id,
+            'UserId': user_id,  # Correct casing for hash key
+            'CorrelationId': correlation_id,  # Correct casing for range key
             'timestamp': timestamp,
-            'correlation_id': correlation_id,
+            'ExpirationTime': expiration_time,  # Added TTL field
             'question': question,
             'answer': answer
         }
